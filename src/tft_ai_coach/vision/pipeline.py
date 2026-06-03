@@ -9,7 +9,7 @@ import numpy as np
 
 from tft_ai_coach.models import DetectedEntity, GameState
 from tft_ai_coach.vision.layout import DEFAULT_16_9, LayoutProfile
-from tft_ai_coach.vision.ocr import ChampionNameReader
+from tft_ai_coach.vision.ocr import ChampionNameReader, read_text
 from tft_ai_coach.vision.templates import TemplateMatcher, matches_to_debug
 
 SHOP_VISUAL_CONFIDENCE_THRESHOLD = 0.68
@@ -37,6 +37,8 @@ class VisionPipeline:
             }
 
         self._detect_shop(frame, state)
+        self._detect_numbers_and_round(frame, state)
+        self._detect_augments(frame, state)
         return state
 
     def _detect_shop(self, frame: np.ndarray, state: GameState) -> None:
@@ -123,6 +125,51 @@ class VisionPipeline:
             self.name_reader = ChampionNameReader(names)
         return self.name_reader
 
+    def _detect_numbers_and_round(self, frame: np.ndarray, state: GameState) -> None:
+        state.stage = self._read_region_text(frame, "stage", "0123456789-", scale=4)
+        gold_text = self._read_region_text(frame, "gold", "0123456789", scale=5)
+        level_text = self._read_region_text(frame, "level", "0123456789Nv.", scale=4)
+        state.gold = _first_int(gold_text)
+        state.level = _first_int(level_text)
+        self.debug["hud"] = {"stage": state.stage, "gold_text": gold_text, "level_text": level_text}
+
+    def _detect_augments(self, frame: np.ndarray, state: GameState) -> None:
+        title = self._read_region_text(frame, "augment_title", scale=3)
+        title_lower = title.lower()
+        is_augment_screen = "escolha" in title_lower or "choose" in title_lower
+        self.debug["augment_screen"] = {"title": title, "active": is_augment_screen}
+        if not is_augment_screen:
+            state.augments = []
+            self.debug["augments"] = []
+            return
+
+        augments: list[str] = []
+        debug: list[dict[str, str]] = []
+        for slot in range(1, 4):
+            region_name = f"augment_slot_{slot}_name"
+            text = self._read_region_text(frame, region_name, scale=3)
+            cleaned = _clean_augment_text(text)
+            debug.append({"slot": str(slot), "raw": text, "cleaned": cleaned})
+            if cleaned and len(cleaned) >= 3:
+                augments.append(cleaned)
+        state.augments = augments
+        self.debug["augments"] = debug
+
+    def _read_region_text(
+        self,
+        frame: np.ndarray,
+        region_name: str,
+        whitelist: str = "",
+        scale: int = 3,
+    ) -> str:
+        region = self.layout.regions[region_name]
+        height, width = frame.shape[:2]
+        x, y, w, h = region.scale(width, height)
+        crop = frame[y : y + h, x : x + w]
+        if crop.size == 0:
+            return ""
+        return read_text(crop, psm=7, whitelist=whitelist, scale=scale)
+
     def export_debug_crops(self, frame: np.ndarray, output_dir: Path) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
         height, width = frame.shape[:2]
@@ -141,3 +188,22 @@ class VisionPipeline:
     def preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         return cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+
+def _first_int(value: str) -> int | None:
+    digits = "".join(ch if ch.isdigit() else " " for ch in value).split()
+    if not digits:
+        return None
+    try:
+        return int(digits[0])
+    except ValueError:
+        return None
+
+
+def _clean_augment_text(value: str) -> str:
+    blocked = ["unlock", "plus", "tier", "recommended", "augment"]
+    cleaned = value.strip()
+    lower = cleaned.lower()
+    if any(word in lower for word in blocked):
+        return ""
+    return cleaned

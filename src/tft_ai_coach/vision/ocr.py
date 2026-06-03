@@ -60,12 +60,25 @@ class ChampionNameReader:
         )
 
     def _read_text(self, image: np.ndarray) -> str:
-        processed = _preprocess_name_strip(image)
-        text = pytesseract.image_to_string(
-            processed,
-            config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'",
+        return read_text(
+            image,
+            psm=7,
+            whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'",
+            scale=3,
         )
-        return " ".join(text.replace("\n", " ").split())
+
+
+def read_text(image: np.ndarray, psm: int = 7, whitelist: str = "", scale: int = 3) -> str:
+    if pytesseract is None:
+        return ""
+    if DEFAULT_TESSERACT_PATH.exists():
+        pytesseract.pytesseract.tesseract_cmd = str(DEFAULT_TESSERACT_PATH)
+    processed = _preprocess_text(image, scale=scale)
+    config = f"--psm {psm}"
+    if whitelist:
+        config += f" -c tessedit_char_whitelist={whitelist}"
+    text = pytesseract.image_to_string(processed, config=config)
+    return " ".join(text.replace("\n", " ").split())
 
 
 def _name_strip(crop: np.ndarray) -> np.ndarray:
@@ -75,8 +88,12 @@ def _name_strip(crop: np.ndarray) -> np.ndarray:
 
 
 def _preprocess_name_strip(image: np.ndarray) -> np.ndarray:
+    return _preprocess_text(image, scale=3)
+
+
+def _preprocess_text(image: np.ndarray, scale: int = 3) -> np.ndarray:
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.resize(gray, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     _, threshold = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return threshold

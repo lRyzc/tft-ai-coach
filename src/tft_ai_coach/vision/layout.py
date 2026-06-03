@@ -33,6 +33,7 @@ DEFAULT_16_9 = LayoutProfile(
     regions={
         "stage": Region("stage", 0.392, 0.009, 0.061, 0.024),
         "gold": Region("gold", 0.453, 0.817, 0.026, 0.024),
+        "level": Region("level", 0.135, 0.807, 0.070, 0.048),
         "shop": Region("shop", 0.250, 0.908, 0.519, 0.083),
         "shop_slot_1": Region("shop_slot_1", 0.250, 0.908, 0.103, 0.083),
         "shop_slot_2": Region("shop_slot_2", 0.354, 0.908, 0.103, 0.083),
@@ -42,6 +43,9 @@ DEFAULT_16_9 = LayoutProfile(
         "bench": Region("bench", 0.190, 0.600, 0.550, 0.125),
         "board": Region("board", 0.270, 0.360, 0.445, 0.265),
         "augments": Region("augments", 0.200, 0.400, 0.600, 0.220),
+        "augment_title": Region("augment_title", 0.425, 0.170, 0.180, 0.075),
+        "augment_slot_1_name": Region("augment_slot_1_name", 0.220, 0.485, 0.170, 0.075),
+        "augment_slot_2_name": Region("augment_slot_2_name", 0.415, 0.485, 0.170, 0.075),
+        "augment_slot_3_name": Region("augment_slot_3_name", 0.635, 0.485, 0.190, 0.075),
     },
 )
-

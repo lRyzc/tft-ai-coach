@@ -7,7 +7,7 @@ from tkinter import messagebox, ttk
 
 import cv2
 
-from tft_ai_coach.advisor import CoachEngine
+from tft_ai_coach.advisor import CoachEngine, compact_overlay_summary
 from tft_ai_coach.capture import WindowCapture, list_windows
 from tft_ai_coach.data.ddragon import load_current_index, update_static_data
 from tft_ai_coach.data.meta import load_comps
@@ -32,6 +32,9 @@ class CoachApp:
         self.engine = CoachEngine(load_comps())
         self.last_state = GameState()
         self.window_titles: list[str] = []
+        self.live_running = False
+        self.live_after_id: str | None = None
+        self.live_interval_ms = 1800
 
         self._build()
         self.refresh_windows()
@@ -64,6 +67,8 @@ class CoachApp:
         ttk.Button(controls, text="Capturar uma vez", command=self.capture_once).pack(side="left", padx=(0, 8))
         ttk.Button(controls, text="Gerar recomendacao", command=self.recommend_from_form).pack(side="left", padx=(0, 8))
         ttk.Button(controls, text="Overlay", command=self.toggle_overlay).pack(side="left")
+        self.live_button = ttk.Button(controls, text="Iniciar Live Coach", command=self.toggle_live)
+        self.live_button.pack(side="left", padx=(8, 0))
 
         self.status_var = tk.StringVar(value="Pronto.")
         ttk.Label(shell, textvariable=self.status_var, foreground="#3f4652").pack(fill="x", pady=(0, 8))
@@ -151,46 +156,97 @@ class CoachApp:
             self._write_debug({"windows": []})
 
     def capture_once(self) -> None:
-        title = self.window_var.get().strip()
-        if not title:
-            messagebox.showwarning("Sem janela", "Escolha uma janela primeiro.")
-            return
         try:
-            self.root.withdraw()
-            self.root.update_idletasks()
-            time.sleep(0.2)
-            frame = self.capture.capture(title)
-        except Exception as exc:
-            self.root.deiconify()
-            messagebox.showerror("Erro na captura", str(exc))
-            self.status_var.set(f"Erro na captura: {exc}")
-            return
-        finally:
-            self.root.deiconify()
-
-        try:
-            state = self.vision.analyze(frame.image)
-            self._populate_empty_fields(state)
+            state, debug_payload = self._capture_and_analyze(hide_root=True, save_debug=True)
+            self._populate_empty_fields(state, force=False)
             self.last_state = self._merge_manual_state(state)
-            path = SCREENSHOT_DIR / "latest_capture.png"
-            cv2.imwrite(str(path), frame.image)
-            crop_dir = SCREENSHOT_DIR / "latest_regions"
-            crops = self.vision.export_debug_crops(frame.image, crop_dir)
-            self._write_debug(
-                {
-                    "captured_window": frame.title,
-                    "rect": frame.rect,
-                    "saved_to": str(path),
-                    "debug_crops": str(crop_dir),
-                    "debug_crop_count": len(crops),
-                    "vision": self.vision.debug,
-                }
-            )
-            self._render_recommendations(self.engine.recommend(self.last_state))
+            recommendations = self.engine.recommend(self.last_state)
+            self._write_debug(debug_payload)
+            self._render_recommendations(recommendations)
+            self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
             self.status_var.set("Captura feita. Veja a loja detectada e o debug.")
         except Exception as exc:
             messagebox.showerror("Erro na captura", str(exc))
             self.status_var.set(f"Erro na captura: {exc}")
+
+    def toggle_live(self) -> None:
+        if self.live_running:
+            self.stop_live()
+        else:
+            self.start_live()
+
+    def start_live(self) -> None:
+        title = self.window_var.get().strip()
+        if not title:
+            self.refresh_windows()
+            title = self.window_var.get().strip()
+        if not title:
+            messagebox.showwarning("Sem janela", "Escolha a janela do TFT primeiro.")
+            return
+        self.live_running = True
+        self.live_button.configure(text="Parar Live Coach")
+        self.overlay.show()
+        self.status_var.set("Live Coach ligado. O overlay sera atualizado automaticamente.")
+        self._live_tick()
+
+    def stop_live(self) -> None:
+        self.live_running = False
+        self.live_button.configure(text="Iniciar Live Coach")
+        if self.live_after_id is not None:
+            self.root.after_cancel(self.live_after_id)
+            self.live_after_id = None
+        self.status_var.set("Live Coach parado.")
+
+    def _live_tick(self) -> None:
+        if not self.live_running:
+            return
+        try:
+            state, debug_payload = self._capture_and_analyze(hide_root=False, save_debug=False)
+            self._populate_empty_fields(state, force=True)
+            self.last_state = self._merge_manual_state(state)
+            recommendations = self.engine.recommend(self.last_state)
+            self._render_recommendations(recommendations)
+            self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
+            self._write_debug(debug_payload)
+            self.status_var.set("Live Coach lendo a tela automaticamente.")
+        except Exception as exc:
+            self.status_var.set(f"Live Coach: {exc}")
+            self.overlay.update_text(f"TFT AI Coach\nErro na leitura:\n{exc}")
+        self.live_after_id = self.root.after(self.live_interval_ms, self._live_tick)
+
+    def _capture_and_analyze(self, hide_root: bool, save_debug: bool) -> tuple[GameState, dict]:
+        title = self.window_var.get().strip()
+        if not title:
+            raise RuntimeError("Escolha a janela do TFT primeiro.")
+        if hide_root:
+            self.root.withdraw()
+            self.root.update_idletasks()
+            time.sleep(0.2)
+        try:
+            frame = self.capture.capture(title)
+        finally:
+            if hide_root:
+                self.root.deiconify()
+
+        state = self.vision.analyze(frame.image)
+        debug_payload = {
+            "captured_window": frame.title,
+            "rect": frame.rect,
+            "vision": self.vision.debug,
+        }
+        if save_debug:
+            path = SCREENSHOT_DIR / "latest_capture.png"
+            cv2.imwrite(str(path), frame.image)
+            crop_dir = SCREENSHOT_DIR / "latest_regions"
+            crops = self.vision.export_debug_crops(frame.image, crop_dir)
+            debug_payload.update(
+                {
+                    "saved_to": str(path),
+                    "debug_crops": str(crop_dir),
+                    "debug_crop_count": len(crops),
+                }
+            )
+        return state, debug_payload
 
     def recommend_from_form(self) -> None:
         self.last_state = self._merge_manual_state(GameState())
@@ -220,10 +276,19 @@ class CoachApp:
         base.augments = manual_augments or base.augments
         return base
 
-    def _populate_empty_fields(self, state: GameState) -> None:
-        if state.shop and not _split_entries(self.shop_text.get("1.0", "end")):
+    def _populate_empty_fields(self, state: GameState, force: bool = False) -> None:
+        if state.stage and (force or not self.stage_var.get().strip()):
+            self.stage_var.set(state.stage)
+        if state.level is not None and (force or not self.level_var.get().strip()):
+            self.level_var.set(str(state.level))
+        if state.gold is not None and (force or not self.gold_var.get().strip()):
+            self.gold_var.set(str(state.gold))
+        if state.shop and (force or not _split_entries(self.shop_text.get("1.0", "end"))):
             self.shop_text.delete("1.0", "end")
             self.shop_text.insert("1.0", ", ".join(state.shop))
+        if state.augments and (force or not _split_entries(self.augments_text.get("1.0", "end"))):
+            self.augments_text.delete("1.0", "end")
+            self.augments_text.insert("1.0", ", ".join(state.augments))
 
     def _render_recommendations(self, recommendations: list[Recommendation]) -> None:
         if not recommendations:
