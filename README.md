@@ -10,6 +10,7 @@ Personal TFT companion prototype for screen-based coaching, patch-aware data, an
 - First-pass shop recognition from screen crops using Data Dragon champion portraits.
 - OCR-assisted champion name reading for the shop, using Tesseract when installed.
 - Live Coach mode that keeps reading the selected game window and updates a compact overlay automatically.
+- Minimal, draggable in-game overlay focused on comp, shop, economy, augments, and early/mid/late plan.
 - Early HUD OCR for stage, level, gold, and augment-choice screens.
 - Debug crop export for shop, board, bench, augments, stage, and gold regions.
 - Early recommendation engine that scores comp routes from board, bench, shop, items, gold, level, and stage.
