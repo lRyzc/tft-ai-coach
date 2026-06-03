@@ -50,6 +50,7 @@ class CoachApp:
         self.live_after_id: str | None = None
         self.live_interval_ms = 1800
         self._image_cache: dict[str, ImageTk.PhotoImage] = {}
+        self.last_capture_rect: tuple[int, int, int, int] | None = None
 
         self._build()
         self.refresh_windows()
@@ -89,6 +90,8 @@ class CoachApp:
         self._command_button(controls, "Capturar uma vez", self.capture_once).pack(side="left", padx=(0, 8))
         self._command_button(controls, "Gerar recomendacao", self.recommend_from_form).pack(side="left", padx=(0, 8))
         self._command_button(controls, "Overlay", self.toggle_overlay).pack(side="left")
+        self.aura_button = self._command_button(controls, self._aura_button_text(), self.toggle_choice_aura)
+        self.aura_button.pack(side="left", padx=(8, 0))
         self.live_button = self._command_button(controls, "Iniciar Live Coach", self.toggle_live, primary=True)
         self.live_button.pack(side="left", padx=(8, 0))
 
@@ -376,6 +379,7 @@ class CoachApp:
             self._write_debug(debug_payload)
             self._render_recommendations(recommendations)
             self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
+            self.overlay.update_guides(self.last_state, recommendations, self.last_capture_rect)
             self.status_var.set("Captura feita. Veja a loja detectada e o debug.")
         except Exception as exc:
             messagebox.showerror("Erro na captura", str(exc))
@@ -407,6 +411,7 @@ class CoachApp:
         if self.live_after_id is not None:
             self.root.after_cancel(self.live_after_id)
             self.live_after_id = None
+        self.overlay.hide_guides()
         self.status_var.set("Live Coach parado.")
 
     def _live_tick(self) -> None:
@@ -419,11 +424,13 @@ class CoachApp:
             recommendations = self.engine.recommend(self.last_state)
             self._render_recommendations(recommendations)
             self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
+            self.overlay.update_guides(self.last_state, recommendations, self.last_capture_rect)
             self._write_debug(debug_payload)
             self.status_var.set("Live Coach lendo a tela automaticamente.")
         except Exception as exc:
             self.status_var.set(f"Live Coach: {exc}")
             self.overlay.update_text(f"TFT AI Coach\nErro na leitura:\n{exc}")
+            self.overlay.hide_guides()
         self.live_after_id = self.root.after(self.live_interval_ms, self._live_tick)
 
     def _capture_and_analyze(self, hide_root: bool, save_debug: bool) -> tuple[GameState, dict]:
@@ -441,6 +448,7 @@ class CoachApp:
                 self.root.deiconify()
 
         state = self.vision.analyze(frame.image)
+        self.last_capture_rect = frame.rect
         debug_payload = {
             "captured_window": frame.title,
             "rect": frame.rect,
@@ -467,6 +475,16 @@ class CoachApp:
     def toggle_overlay(self) -> None:
         self.overlay.show()
         self.overlay.update_text(self._overlay_text())
+
+    def toggle_choice_aura(self) -> None:
+        enabled = not self.overlay.choice_aura_enabled()
+        self.overlay.set_choice_aura_enabled(enabled)
+        self.aura_button.configure(text=self._aura_button_text())
+        status = "ligada" if enabled else "desligada"
+        self.status_var.set(f"Aura de decisao {status}.")
+
+    def _aura_button_text(self) -> str:
+        return "Aura ON" if self.overlay.choice_aura_enabled() else "Aura OFF"
 
     def _merge_manual_state(self, base: GameState) -> GameState:
         manual_stage = self.stage_var.get().strip()

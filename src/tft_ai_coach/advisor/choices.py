@@ -4,7 +4,7 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
-from tft_ai_coach.models import CompDefinition, GameState, Recommendation
+from tft_ai_coach.models import CompDefinition, DecisionOption, GameState, Recommendation
 
 
 DIVINITY_NOTES = {
@@ -33,11 +33,46 @@ def choice_summary(state: GameState, recommendations: list[Recommendation]) -> s
         return divinity_summary(state, recommendations)
     if state.screen_context == "augment_choice":
         return augment_summary(state, recommendations)
+    if state.screen_context == "reward_choice":
+        return reward_summary(state, recommendations)
     return ""
 
 
+def best_decision_option(state: GameState, recommendations: list[Recommendation]) -> tuple[DecisionOption | None, str]:
+    if not state.decision_slots:
+        return None, choice_summary(state, recommendations)
+    comp = recommendations[0].comp if recommendations else None
+    ranked = sorted(state.decision_slots, key=lambda option: _score_option(option, comp), reverse=True)
+    best = ranked[0]
+    runner_up = ranked[1].name if len(ranked) > 1 else ""
+    if best.kind == "divinity":
+        tier, _tags, reason = DIVINITY_NOTES.get(best.name, ("B", [], "melhor encaixe geral agora"))
+        label = f"{best.name} ({tier})"
+        if runner_up:
+            label += f" > {runner_up}"
+        return best, f"{label}: {reason}"
+    if best.kind == "augment":
+        tier, tags, reason = _augment_note(best.name)
+        tag_line = f" [{', '.join(tags[:2])}]" if tags else ""
+        label = f"{best.name} ({tier}){tag_line}"
+        if runner_up:
+            label += f" > {runner_up}"
+        return best, f"{label}: {reason}"
+    if best.kind == "reward":
+        reason = _reward_reason(best, comp)
+        label = best.name
+        if best.item:
+            label += f" + {best.item}"
+        if runner_up:
+            label += f" > {runner_up}"
+        return best, f"{label}: {reason}"
+    return best, best.name
+
+
 def divinity_summary(state: GameState, recommendations: list[Recommendation]) -> str:
-    options = state.decision_options or _extract_known_options(state.decision_text, DIVINITY_NOTES)
+    options = [slot.name for slot in state.decision_slots] or state.decision_options or _extract_known_options(
+        state.decision_text, DIVINITY_NOTES
+    )
     if not options:
         if state.decision_text:
             return f"Divindade: lendo opcoes ({state.decision_text[:52]})"
@@ -65,6 +100,15 @@ def augment_summary(state: GameState, recommendations: list[Recommendation]) -> 
     return f"Augments: escolha {best} ({tier}){tag_line} - {reason}."
 
 
+def reward_summary(state: GameState, recommendations: list[Recommendation]) -> str:
+    if not state.decision_slots:
+        return "Recompensa: lendo campeoes/itens"
+    best, reason = best_decision_option(state, recommendations)
+    if best is None:
+        return "Recompensa: aguardando leitura"
+    return f"Recompensa: escolha {reason}"
+
+
 def _score_divinity(name: str, comp: CompDefinition | None) -> float:
     tier, tags, _reason = DIVINITY_NOTES.get(name, ("B", [], ""))
     score = _tier_score(tier)
@@ -88,6 +132,54 @@ def _score_augment(name: str, comp: CompDefinition | None) -> float:
         if fuzz.partial_ratio(_norm(keyword), _norm(name)) >= 82:
             score += 4
     return score
+
+
+def _score_option(option: DecisionOption, comp: CompDefinition | None) -> float:
+    if option.kind == "divinity":
+        return _score_divinity(option.name, comp) + option.confidence
+    if option.kind == "augment":
+        return _score_augment(option.name, comp) + option.confidence
+    if option.kind == "reward":
+        return _score_reward(option, comp) + option.confidence
+    return option.confidence
+
+
+def _score_reward(option: DecisionOption, comp: CompDefinition | None) -> float:
+    if comp is None:
+        return 8.0
+    normalized = _norm(option.name)
+    score = 6.0
+    core = {_norm(unit) for unit in comp.core_units}
+    carries = {_norm(unit) for unit in comp.carry_units}
+    early = {_norm(unit) for unit in comp.early_units}
+    mid = {_norm(unit) for unit in comp.mid_units}
+    alternatives = {_norm(unit) for unit in comp.alternative_units}
+    if normalized in carries:
+        score += 26
+    if normalized in core:
+        score += 18
+    if normalized in mid:
+        score += 10
+    if normalized in early:
+        score += 8
+    if normalized in alternatives:
+        score += 6
+    return score
+
+
+def _reward_reason(option: DecisionOption, comp: CompDefinition | None) -> str:
+    if comp is None:
+        return "melhor leitura geral agora"
+    normalized = _norm(option.name)
+    if normalized in {_norm(unit) for unit in comp.carry_units}:
+        return f"e carry/peca chave da {comp.name}"
+    if normalized in {_norm(unit) for unit in comp.core_units}:
+        return f"entra direto na composicao {comp.name}"
+    if normalized in {_norm(unit) for unit in comp.mid_units}:
+        return f"fortalece seu mid game na linha {comp.name}"
+    if normalized in {_norm(unit) for unit in comp.alternative_units}:
+        return f"boa alternativa se a linha principal nao bater"
+    return f"mais coerente com o plano atual: {comp.name}"
 
 
 def _augment_note(name: str) -> tuple[str, list[str], str]:

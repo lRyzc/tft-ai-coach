@@ -8,7 +8,7 @@ import unicodedata
 import cv2
 import numpy as np
 
-from tft_ai_coach.models import DetectedEntity, GameState
+from tft_ai_coach.models import DecisionOption, DetectedEntity, GameState
 from tft_ai_coach.vision.layout import DEFAULT_16_9, LayoutProfile
 from tft_ai_coach.vision.ocr import ChampionNameReader, read_text
 from tft_ai_coach.vision.templates import TemplateMatcher, matches_to_debug
@@ -147,20 +147,89 @@ class VisionPipeline:
 
     def _detect_decision_context(self, frame: np.ndarray, state: GameState) -> None:
         banner = self._read_region_text(frame, "decision_banner", scale=3, psm=6)
-        normalized = _fold(banner)
+        reward_banner = self._read_region_text(frame, "reward_banner", scale=3, psm=6)
+        normalized = _fold(f"{banner} {reward_banner}")
         context = "game"
         options: list[str] = []
+        slots: list[DecisionOption] = []
+        champion_names = [template.name for template in self._champion_matcher().templates]
         if "divindade" in normalized or "oferece" in normalized:
             context = "divinity_choice"
-            options = _known_names_in_text(banner, [template.name for template in self._champion_matcher().templates])
+            slots = self._read_divinity_slots(frame, champion_names)
+            options = [slot.name for slot in slots] or _known_names_in_text(banner, champion_names)
+        elif "concede" in normalized or "presente" in normalized or "despedida" in normalized:
+            context = "reward_choice"
+            slots = self._read_reward_slots(frame, champion_names)
+            options = [slot.name for slot in slots]
         state.screen_context = context
-        state.decision_text = banner
+        state.decision_text = " ".join(part for part in [banner, reward_banner] if part)
         state.decision_options = options
+        state.decision_slots = slots
         self.debug["decision_context"] = {
             "banner": banner,
+            "reward_banner": reward_banner,
             "context": context,
             "options": options,
+            "slots": [
+                {
+                    "slot": slot.slot,
+                    "name": slot.name,
+                    "kind": slot.kind,
+                    "region": list(slot.region),
+                    "item": slot.item,
+                    "confidence": slot.confidence,
+                    "source": slot.source,
+                }
+                for slot in slots
+            ],
         }
+
+    def _read_divinity_slots(self, frame: np.ndarray, champion_names: list[str]) -> list[DecisionOption]:
+        slots: list[DecisionOption] = []
+        for slot in range(1, 3):
+            name_text = self._read_region_text(frame, f"divinity_slot_{slot}_name", scale=4, psm=7)
+            name, score = _best_known_name(name_text, champion_names)
+            if name:
+                slots.append(
+                    DecisionOption(
+                        slot=slot,
+                        name=name,
+                        kind="divinity",
+                        region=_region_tuple(self.layout.regions[f"divinity_slot_{slot}_card"]),
+                        confidence=score,
+                        source="divinity_name_ocr",
+                    )
+                )
+        return slots
+
+    def _read_reward_slots(self, frame: np.ndarray, champion_names: list[str]) -> list[DecisionOption]:
+        matcher = self._champion_matcher()
+        height, width = frame.shape[:2]
+        slots: list[DecisionOption] = []
+        for slot in range(1, 4):
+            text = self._read_region_text(frame, f"reward_slot_{slot}_name", scale=3, psm=6)
+            ocr_name, ocr_score = _best_known_name(text, champion_names)
+            icon_region = self.layout.regions[f"reward_slot_{slot}_icon"]
+            x, y, w, h = icon_region.scale(width, height)
+            crop = frame[y : y + h, x : x + w]
+            matches = matcher.best_match(crop, limit=2)
+            visual = matches[0] if matches else None
+            use_visual = bool(visual and visual.confidence >= 0.56 and visual.confidence >= ocr_score)
+            name = visual.name if use_visual and visual is not None else ocr_name
+            confidence = visual.confidence if use_visual and visual is not None else ocr_score
+            source = "reward_icon_template" if use_visual else "reward_name_ocr"
+            if name:
+                slots.append(
+                    DecisionOption(
+                        slot=slot,
+                        name=name,
+                        kind="reward",
+                        region=_region_tuple(self.layout.regions[f"reward_slot_{slot}_card"]),
+                        confidence=confidence,
+                        source=source,
+                    )
+                )
+        return slots
 
     def _detect_augments(self, frame: np.ndarray, state: GameState) -> None:
         title = self._read_region_text(frame, "augment_title", scale=3)
@@ -174,6 +243,7 @@ class VisionPipeline:
 
         state.screen_context = "augment_choice"
         state.decision_text = title
+        state.decision_slots = []
 
         augments: list[str] = []
         debug: list[dict[str, str]] = []
@@ -184,6 +254,16 @@ class VisionPipeline:
             debug.append({"slot": str(slot), "raw": text, "cleaned": cleaned})
             if cleaned and len(cleaned) >= 3:
                 augments.append(cleaned)
+                state.decision_slots.append(
+                    DecisionOption(
+                        slot=slot,
+                        name=cleaned,
+                        kind="augment",
+                        region=_region_tuple(self.layout.regions[f"augment_slot_{slot}_card"]),
+                        confidence=0.65,
+                        source="augment_name_ocr",
+                    )
+                )
         state.augments = augments
         self.debug["augments"] = debug
 
@@ -249,6 +329,30 @@ def _known_names_in_text(text: str, names: list[str]) -> list[str]:
         if _fold(name) in normalized:
             found.append(name)
     return found
+
+
+def _best_known_name(text: str, names: list[str]) -> tuple[str, float]:
+    normalized_text = _fold(text)
+    if not normalized_text:
+        return "", 0.0
+    best_name = ""
+    best_score = 0.0
+    for name in names:
+        score = 1.0 if _fold(name) in normalized_text else 0.0
+        if score == 0.0:
+            from rapidfuzz import fuzz
+
+            score = fuzz.WRatio(normalized_text, _fold(name)) / 100
+        if score > best_score:
+            best_name = name
+            best_score = float(score)
+    if best_score < 0.70:
+        return "", best_score
+    return best_name, round(best_score, 4)
+
+
+def _region_tuple(region) -> tuple[float, float, float, float]:
+    return (region.x, region.y, region.w, region.h)
 
 
 def _fold(value: str) -> str:

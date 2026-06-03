@@ -13,6 +13,17 @@ class DetectedEntity:
 
 
 @dataclass(slots=True)
+class DecisionOption:
+    slot: int
+    name: str
+    kind: str
+    region: tuple[float, float, float, float]
+    item: str = ""
+    confidence: float = 1.0
+    source: str = "vision"
+
+
+@dataclass(slots=True)
 class GameState:
     stage: str = ""
     level: int | None = None
@@ -21,6 +32,7 @@ class GameState:
     screen_context: str = "game"
     decision_text: str = ""
     decision_options: list[str] = field(default_factory=list)
+    decision_slots: list[DecisionOption] = field(default_factory=list)
     board: list[str] = field(default_factory=list)
     bench: list[str] = field(default_factory=list)
     shop: list[str] = field(default_factory=list)

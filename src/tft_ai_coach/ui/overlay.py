@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import ctypes
 import textwrap
 import tkinter as tk
+
+from tft_ai_coach.advisor.choices import best_decision_option
+from tft_ai_coach.models import DecisionOption, GameState, Recommendation
+from tft_ai_coach.ui.settings import load_overlay_settings, save_overlay_settings
 
 BG = "#101318"
 SURFACE = "#171b22"
@@ -9,15 +14,26 @@ SURFACE_SOFT = "#1d232b"
 TEXT = "#f4f1e8"
 MUTED = "#9da7b3"
 GOLD = "#d8b34a"
+BRIGHT_GOLD = "#ffd35a"
 TEAL = "#62c7b4"
+BRIGHT_TEAL = "#5ff0dc"
 LINE = "#2b3340"
 WARN = "#e6a04a"
+TRANSPARENT = "#ff00ff"
+
+GWL_EXSTYLE = -20
+WS_EX_TRANSPARENT = 0x00000020
+WS_EX_LAYERED = 0x00080000
+WS_EX_TOOLWINDOW = 0x00000080
 
 
 class CoachOverlay:
     def __init__(self, parent: tk.Tk) -> None:
         self.parent = parent
+        self.settings = load_overlay_settings()
         self.window: tk.Toplevel | None = None
+        self.guide_window: tk.Toplevel | None = None
+        self.guide_canvas: tk.Canvas | None = None
         self._drag_start: tuple[int, int] | None = None
         self.status_var = tk.StringVar(value="live")
         self.comp_var = tk.StringVar(value="Aguardando leitura...")
@@ -37,8 +53,9 @@ class CoachOverlay:
         window = tk.Toplevel(self.parent)
         window.title("TFT Coach Overlay")
         screen_width = self.parent.winfo_screenwidth()
-        x = max(20, screen_width - 452)
-        window.geometry(f"424x318+{x}+78")
+        x = self.settings.compact_x if self.settings.compact_x is not None else max(20, screen_width - 452)
+        y = self.settings.compact_y if self.settings.compact_y is not None else 78
+        window.geometry(f"424x318+{x}+{y}")
         window.attributes("-topmost", True)
         window.attributes("-alpha", 0.96)
         window.overrideredirect(True)
@@ -200,10 +217,26 @@ class CoachOverlay:
         x = self.window.winfo_x() + event.x - self._drag_start[0]
         y = self.window.winfo_y() + event.y - self._drag_start[1]
         self.window.geometry(f"+{x}+{y}")
+        self.settings.compact_x = x
+        self.settings.compact_y = y
+        save_overlay_settings(self.settings)
 
     def hide(self) -> None:
         if self.window is not None:
             self.window.withdraw()
+
+    def hide_guides(self) -> None:
+        if self.guide_window is not None:
+            self.guide_window.withdraw()
+
+    def set_choice_aura_enabled(self, enabled: bool) -> None:
+        self.settings.show_choice_aura = enabled
+        save_overlay_settings(self.settings)
+        if not enabled:
+            self.hide_guides()
+
+    def choice_aura_enabled(self) -> bool:
+        return self.settings.show_choice_aura
 
     def update_text(self, text: str) -> None:
         parsed = _parse_overlay_text(text)
@@ -217,6 +250,108 @@ class CoachOverlay:
         self.early_var.set(parsed.get("early", "Early: -"))
         self.mid_var.set(parsed.get("mid", "Mid: -"))
         self.late_var.set(parsed.get("late", "Late: -"))
+
+    def update_guides(
+        self,
+        state: GameState,
+        recommendations: list[Recommendation],
+        game_rect: tuple[int, int, int, int] | None,
+    ) -> None:
+        if not self.settings.show_choice_aura or game_rect is None:
+            self.hide_guides()
+            return
+        option, reason = best_decision_option(state, recommendations)
+        if option is None:
+            self.hide_guides()
+            return
+        self._show_guide_window(game_rect)
+        self._draw_choice_aura(option, reason, game_rect)
+
+    def _show_guide_window(self, game_rect: tuple[int, int, int, int]) -> None:
+        left, top, right, bottom = game_rect
+        width = max(1, right - left)
+        height = max(1, bottom - top)
+        if self.guide_window is None:
+            window = tk.Toplevel(self.parent)
+            window.title("TFT Coach Guide")
+            window.overrideredirect(True)
+            window.attributes("-topmost", True)
+            try:
+                window.attributes("-transparentcolor", TRANSPARENT)
+            except tk.TclError:
+                window.attributes("-alpha", 0.34)
+            window.configure(bg=TRANSPARENT)
+            canvas = tk.Canvas(window, bg=TRANSPARENT, highlightthickness=0)
+            canvas.pack(fill="both", expand=True)
+            self.guide_window = window
+            self.guide_canvas = canvas
+            window.update_idletasks()
+            _make_clickthrough(window)
+        self.guide_window.geometry(f"{width}x{height}+{left}+{top}")
+        self.guide_window.deiconify()
+        self.guide_window.lift()
+        _make_clickthrough(self.guide_window)
+
+    def _draw_choice_aura(
+        self,
+        option: DecisionOption,
+        reason: str,
+        game_rect: tuple[int, int, int, int],
+    ) -> None:
+        if self.guide_canvas is None:
+            return
+        left, top, right, bottom = game_rect
+        width = max(1, right - left)
+        height = max(1, bottom - top)
+        self.guide_canvas.configure(width=width, height=height)
+        self.guide_canvas.delete("all")
+        x, y, w, h = _scale_region(option.region, width, height)
+        x = max(2, x)
+        y = max(2, y)
+        w = min(w, width - x - 2)
+        h = min(h, height - y - 2)
+        title = _guide_title(option)
+        detail = _short_reason(reason)
+        accent = BRIGHT_GOLD if option.kind != "augment" else BRIGHT_TEAL
+
+        for offset, color, stroke in [(10, "#7b5a19", 2), (6, accent, 3), (1, "#fff1a8", 2)]:
+            self.guide_canvas.create_rectangle(
+                x - offset,
+                y - offset,
+                x + w + offset,
+                y + h + offset,
+                outline=color,
+                width=stroke,
+            )
+        self.guide_canvas.create_line(x, y - 18, x + w, y - 18, fill=accent, width=3)
+
+        label_x = x + w / 2
+        label_y = max(24, y - 48)
+        label_width = min(360, max(220, w + 80))
+        self.guide_canvas.create_rectangle(
+            label_x - label_width / 2,
+            label_y - 22,
+            label_x + label_width / 2,
+            label_y + 26,
+            fill="#101318",
+            outline=accent,
+            width=2,
+        )
+        self.guide_canvas.create_text(
+            label_x,
+            label_y - 8,
+            text=title,
+            fill=accent,
+            font=("Segoe UI", 12, "bold"),
+        )
+        self.guide_canvas.create_text(
+            label_x,
+            label_y + 11,
+            text=detail,
+            fill=TEXT,
+            font=("Segoe UI", 9),
+            width=label_width - 22,
+        )
 
 
 def _parse_overlay_text(text: str) -> dict[str, str]:
@@ -289,3 +424,37 @@ def _compact_name(name: str) -> str:
     if len(parts) >= 2:
         return f"{parts[0][0]}. {' '.join(parts[1:])}"
     return name[:12]
+
+
+def _scale_region(region: tuple[float, float, float, float], width: int, height: int) -> tuple[int, int, int, int]:
+    x, y, w, h = region
+    return int(x * width), int(y * height), int(w * width), int(h * height)
+
+
+def _guide_title(option: DecisionOption) -> str:
+    if option.kind == "divinity":
+        return f"MELHOR DIVINDADE: {option.name}"
+    if option.kind == "augment":
+        return f"MELHOR AUGMENT: {option.name}"
+    if option.kind == "reward":
+        return f"MELHOR ESCOLHA: {option.name}"
+    return f"MELHOR: {option.name}"
+
+
+def _short_reason(reason: str) -> str:
+    if ":" in reason:
+        reason = reason.split(":", 1)[1].strip()
+    return textwrap.shorten(reason, width=78, placeholder="...")
+
+
+def _make_clickthrough(window: tk.Toplevel) -> None:
+    try:
+        hwnd = window.winfo_id()
+        ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(
+            hwnd,
+            GWL_EXSTYLE,
+            ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW,
+        )
+    except Exception:
+        return
