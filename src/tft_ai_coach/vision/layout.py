@@ -32,8 +32,8 @@ DEFAULT_16_9 = LayoutProfile(
     aspect_ratio="16:9",
     regions={
         "stage": Region("stage", 0.392, 0.009, 0.061, 0.024),
-        "gold": Region("gold", 0.453, 0.817, 0.026, 0.024),
-        "level": Region("level", 0.135, 0.807, 0.070, 0.048),
+        "gold": Region("gold", 0.492, 0.812, 0.035, 0.035),
+        "level": Region("level", 0.160, 0.807, 0.050, 0.050),
         "shop": Region("shop", 0.250, 0.908, 0.519, 0.083),
         "shop_slot_1": Region("shop_slot_1", 0.250, 0.908, 0.103, 0.083),
         "shop_slot_2": Region("shop_slot_2", 0.354, 0.908, 0.103, 0.083),

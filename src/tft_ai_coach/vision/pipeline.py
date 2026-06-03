@@ -15,6 +15,7 @@ from tft_ai_coach.vision.templates import TemplateMatcher, matches_to_debug
 SHOP_VISUAL_CONFIDENCE_THRESHOLD = 0.68
 SHOP_VISUAL_MARGIN_THRESHOLD = 0.035
 SHOP_OCR_CONFIDENCE_THRESHOLD = 0.78
+SHOP_OCR_VISUAL_AGREEMENT_THRESHOLD = 0.65
 
 
 @dataclass(slots=True)
@@ -68,7 +69,15 @@ class VisionPipeline:
                 and ocr_match.normalized_length >= 3
                 and ocr_match.score >= SHOP_OCR_CONFIDENCE_THRESHOLD
             )
-            use_ocr = bool(ocr_valid and not visual_strong)
+            ocr_visual_agree = bool(
+                ocr_match
+                and visual_best
+                and ocr_match.name == visual_best.name
+                and ocr_match.normalized_length >= 3
+                and ocr_match.score >= SHOP_OCR_VISUAL_AGREEMENT_THRESHOLD
+                and visual_best.confidence >= 0.55
+            )
+            use_ocr = bool((ocr_valid and not visual_strong) or ocr_visual_agree)
             use_visual = bool(
                 visual_best
                 and visual_best.confidence >= SHOP_VISUAL_CONFIDENCE_THRESHOLD
@@ -77,7 +86,7 @@ class VisionPipeline:
             accepted = use_ocr or use_visual
             detected_name = ocr_match.name if use_ocr and ocr_match is not None else visual_best.name if visual_best else ""
             confidence = ocr_match.score if use_ocr and ocr_match is not None else visual_best.confidence if visual_best else 0.0
-            source = "shop_name_ocr" if use_ocr else "shop_template"
+            source = "shop_ocr_visual_agree" if ocr_visual_agree else "shop_name_ocr" if use_ocr else "shop_template"
             self.debug["shop"].append(
                 {
                     "slot": slot_index,
@@ -87,6 +96,7 @@ class VisionPipeline:
                     "source": source if accepted else "",
                     "confidence": confidence,
                     "visual_margin": round(visual_margin, 4),
+                    "ocr_visual_agree": ocr_visual_agree,
                     "ocr": {
                         "raw_text": ocr_match.raw_text,
                         "name": ocr_match.name,
