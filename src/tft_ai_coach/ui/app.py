@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox, ttk
 
 import cv2
@@ -149,14 +148,19 @@ class CoachApp:
         try:
             frame = self.capture.capture(title)
             state = self.vision.analyze(frame.image)
+            self._populate_empty_fields(state)
             self.last_state = self._merge_manual_state(state)
             path = SCREENSHOT_DIR / "latest_capture.png"
             cv2.imwrite(str(path), frame.image)
+            crop_dir = SCREENSHOT_DIR / "latest_regions"
+            crops = self.vision.export_debug_crops(frame.image, crop_dir)
             self._write_debug(
                 {
                     "captured_window": frame.title,
                     "rect": frame.rect,
                     "saved_to": str(path),
+                    "debug_crops": str(crop_dir),
+                    "debug_crop_count": len(crops),
                     "vision": self.vision.debug,
                 }
             )
@@ -173,15 +177,29 @@ class CoachApp:
         self.overlay.update_text(self._overlay_text())
 
     def _merge_manual_state(self, base: GameState) -> GameState:
-        base.stage = self.stage_var.get().strip()
-        base.level = _optional_int(self.level_var.get())
-        base.gold = _optional_int(self.gold_var.get())
-        base.board = _split_entries(self.board_text.get("1.0", "end"))
-        base.bench = _split_entries(self.bench_text.get("1.0", "end"))
-        base.shop = _split_entries(self.shop_text.get("1.0", "end"))
-        base.items = _split_entries(self.items_text.get("1.0", "end"))
-        base.augments = _split_entries(self.augments_text.get("1.0", "end"))
+        manual_stage = self.stage_var.get().strip()
+        manual_level = _optional_int(self.level_var.get())
+        manual_gold = _optional_int(self.gold_var.get())
+        manual_board = _split_entries(self.board_text.get("1.0", "end"))
+        manual_bench = _split_entries(self.bench_text.get("1.0", "end"))
+        manual_shop = _split_entries(self.shop_text.get("1.0", "end"))
+        manual_items = _split_entries(self.items_text.get("1.0", "end"))
+        manual_augments = _split_entries(self.augments_text.get("1.0", "end"))
+
+        base.stage = manual_stage or base.stage
+        base.level = manual_level if manual_level is not None else base.level
+        base.gold = manual_gold if manual_gold is not None else base.gold
+        base.board = manual_board or base.board
+        base.bench = manual_bench or base.bench
+        base.shop = manual_shop or base.shop
+        base.items = manual_items or base.items
+        base.augments = manual_augments or base.augments
         return base
+
+    def _populate_empty_fields(self, state: GameState) -> None:
+        if state.shop and not _split_entries(self.shop_text.get("1.0", "end")):
+            self.shop_text.delete("1.0", "end")
+            self.shop_text.insert("1.0", ", ".join(state.shop))
 
     def _render_recommendations(self, recommendations: list[Recommendation]) -> None:
         if not recommendations:
@@ -234,4 +252,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

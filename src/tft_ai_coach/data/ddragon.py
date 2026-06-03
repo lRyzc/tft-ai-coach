@@ -85,6 +85,8 @@ def _record_from_raw(kind: str, raw: dict[str, Any]) -> StaticRecord:
 def _belongs_to_current_set(record: StaticRecord, current_set: str) -> bool:
     if not current_set:
         return True
+    if record.kind == "champions" and _is_non_shop_champion(record):
+        return False
     if record.kind == "augments":
         return current_set in record.id or _extract_set_number(record.id) is None
     if record.kind == "items":
@@ -92,7 +94,18 @@ def _belongs_to_current_set(record: StaticRecord, current_set: str) -> bool:
     return current_set in record.id
 
 
-def update_static_data(version: str | None = None, download_icons: bool = False) -> dict[str, Any]:
+def _is_non_shop_champion(record: StaticRecord) -> bool:
+    if record.cost is None or record.cost <= 0:
+        return True
+    blocked_fragments = ["FakeUnit", "Enemy_", "Minion", "TraitClone"]
+    return any(fragment in record.id for fragment in blocked_fragments)
+
+
+def update_static_data(
+    version: str | None = None,
+    download_icons: bool = False,
+    icon_kinds: set[str] | None = None,
+) -> dict[str, Any]:
     ensure_dirs()
     version = version or latest_version()
     version_dir = DDRAGON_DIR / version
@@ -125,7 +138,9 @@ def update_static_data(version: str | None = None, download_icons: bool = False)
     (DDRAGON_DIR / "current.json").write_text(json.dumps({"version": version}, indent=2), encoding="utf-8")
 
     if download_icons:
-        for records in normalized.values():
+        for kind, records in normalized.items():
+            if icon_kinds is not None and kind not in icon_kinds:
+                continue
             for record in records:
                 image_group = record.get("image_group")
                 image_file = record.get("image_file")
@@ -158,8 +173,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Update TFT static data from Data Dragon.")
     parser.add_argument("--version", default=None)
     parser.add_argument("--download-icons", action="store_true")
+    parser.add_argument(
+        "--icon-kind",
+        action="append",
+        choices=sorted(STATIC_FILES),
+        help="Limit icon downloads to one data kind. Can be passed more than once.",
+    )
     args = parser.parse_args()
-    index = update_static_data(version=args.version, download_icons=args.download_icons)
+    icon_kinds = set(args.icon_kind) if args.icon_kind else None
+    index = update_static_data(version=args.version, download_icons=args.download_icons, icon_kinds=icon_kinds)
     print(f"Updated TFT data: patch={index['version']} set={index['set_id']}")
     for kind, records in index["records"].items():
         print(f"- {kind}: {len(records)}")

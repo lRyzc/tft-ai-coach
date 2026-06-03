@@ -7,6 +7,8 @@ Personal TFT companion prototype for screen-based coaching, patch-aware data, an
 - Desktop app shell with a coach panel and overlay window.
 - Data Dragon updater for current TFT champions, items, traits, augments, and icons.
 - Window capture module for Windows desktop/game windows.
+- First-pass shop recognition from screen crops using Data Dragon champion portraits.
+- Debug crop export for shop, board, bench, augments, stage, and gold regions.
 - Early recommendation engine that scores comp routes from board, bench, shop, items, gold, level, and stage.
 - Research notes on open-source TFT projects worth mining for ideas.
 
@@ -36,4 +38,3 @@ data/meta/       editable comp definitions
 ## Notes
 
 This repo intentionally starts without game memory access, process injection, or click automation. The first goal is to build the local "eye" and "brain": capture the screen, understand the TFT state, and explain decisions.
-
