@@ -232,7 +232,7 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
         elif lower.startswith("comp:"):
             parsed["comp"] = _wrap(line, 52)
         elif lower.startswith("loja:"):
-            parsed["shop"] = _wrap(line[5:].strip(), 48)
+            parsed["shop"] = _format_shop(line[5:].strip())
         elif lower.startswith("economia:"):
             parsed["economy"] = _wrap(line[9:].strip(), 56)
         elif lower.startswith("augments:"):
@@ -256,3 +256,32 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
 
 def _wrap(value: str, width: int) -> str:
     return "\n".join(textwrap.wrap(value, width=width, break_long_words=False)) or "-"
+
+
+def _format_shop(value: str) -> str:
+    names = [name.strip() for name in value.split(",") if name.strip()]
+    if not names:
+        return "aguardando loja"
+    compact = [_compact_name(name) for name in names[:5]]
+    line = "  |  ".join(compact)
+    if len(line) <= 58:
+        return line
+    return "  |  ".join(compact[:3]) + "\n" + "  |  ".join(compact[3:])
+
+
+def _compact_name(name: str) -> str:
+    aliases = {
+        "Aurelion Sol": "A. Sol",
+        "Twisted Fate": "TF",
+        "Miss Fortune": "MF",
+        "Nunu & Willump": "Nunu",
+        "Tahm Kench": "Tahm",
+    }
+    if name in aliases:
+        return aliases[name]
+    if len(name) <= 12:
+        return name
+    parts = name.split()
+    if len(parts) >= 2:
+        return f"{parts[0][0]}. {' '.join(parts[1:])}"
+    return name[:12]
