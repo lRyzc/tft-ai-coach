@@ -8,6 +8,7 @@ Personal TFT companion prototype for screen-based coaching, patch-aware data, an
 - Data Dragon updater for current TFT champions, items, traits, augments, and icons.
 - Window capture module for Windows desktop/game windows.
 - First-pass shop recognition from screen crops using Data Dragon champion portraits.
+- OCR-assisted champion name reading for the shop, using Tesseract when installed.
 - Debug crop export for shop, board, bench, augments, stage, and gold regions.
 - Early recommendation engine that scores comp routes from board, bench, shop, items, gold, level, and stage.
 - Research notes on open-source TFT projects worth mining for ideas.

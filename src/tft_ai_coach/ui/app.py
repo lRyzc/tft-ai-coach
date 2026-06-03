@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -155,7 +156,19 @@ class CoachApp:
             messagebox.showwarning("Sem janela", "Escolha uma janela primeiro.")
             return
         try:
+            self.root.withdraw()
+            self.root.update_idletasks()
+            time.sleep(0.2)
             frame = self.capture.capture(title)
+        except Exception as exc:
+            self.root.deiconify()
+            messagebox.showerror("Erro na captura", str(exc))
+            self.status_var.set(f"Erro na captura: {exc}")
+            return
+        finally:
+            self.root.deiconify()
+
+        try:
             state = self.vision.analyze(frame.image)
             self._populate_empty_fields(state)
             self.last_state = self._merge_manual_state(state)
