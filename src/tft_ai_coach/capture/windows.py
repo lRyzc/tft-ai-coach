@@ -1,19 +1,15 @@
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Iterable
 
+import mss
+
 import numpy as np
 
-try:
-    import win32con
-    import win32gui
-    import win32ui
-except Exception:  # pragma: no cover - only happens off Windows or without pywin32
-    win32con = None
-    win32gui = None
-    win32ui = None
+user32 = ctypes.windll.user32
 
 
 @dataclass(slots=True)
@@ -32,24 +28,32 @@ class CapturedFrame:
 
 
 def list_windows() -> list[WindowInfo]:
-    if win32gui is None:
-        return []
     windows: list[WindowInfo] = []
 
-    def enum_handler(hwnd: int, _: object) -> None:
-        if not win32gui.IsWindowVisible(hwnd):
-            return
-        title = win32gui.GetWindowText(hwnd).strip()
+    def enum_handler(hwnd: int, _: int) -> bool:
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        title_length = user32.GetWindowTextLengthW(hwnd)
+        if title_length <= 0:
+            return True
+        buffer = ctypes.create_unicode_buffer(title_length + 1)
+        user32.GetWindowTextW(hwnd, buffer, title_length + 1)
+        title = buffer.value.strip()
         if not title:
-            return
-        rect = win32gui.GetWindowRect(hwnd)
+            return True
+        rect_struct = RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect_struct)):
+            return True
+        rect = (rect_struct.left, rect_struct.top, rect_struct.right, rect_struct.bottom)
         width = rect[2] - rect[0]
         height = rect[3] - rect[1]
         if width < 200 or height < 120:
-            return
+            return True
         windows.append(WindowInfo(hwnd=hwnd, title=title, rect=rect))
+        return True
 
-    win32gui.EnumWindows(enum_handler, None)
+    enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)(enum_handler)
+    user32.EnumWindows(enum_proc, 0)
     return sorted(windows, key=lambda item: item.title.lower())
 
 
@@ -69,33 +73,19 @@ class WindowCapture:
         return self.capture_hwnd(window.hwnd, window.title)
 
     def capture_hwnd(self, hwnd: int, title: str = "") -> CapturedFrame:
-        if win32gui is None or win32ui is None or win32con is None:
-            raise RuntimeError("pywin32 is required for window capture on Windows")
-
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        rect_struct = RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect_struct)):
+            raise RuntimeError("Could not read window rectangle")
+        left, top, right, bottom = rect_struct.left, rect_struct.top, rect_struct.right, rect_struct.bottom
         width = right - left
         height = bottom - top
         if width <= 0 or height <= 0:
             raise RuntimeError("Window has no capturable area")
 
-        window_dc = win32gui.GetWindowDC(hwnd)
-        source_dc = win32ui.CreateDCFromHandle(window_dc)
-        memory_dc = source_dc.CreateCompatibleDC()
-        bitmap = win32ui.CreateBitmap()
-        bitmap.CreateCompatibleBitmap(source_dc, width, height)
-        memory_dc.SelectObject(bitmap)
-        memory_dc.BitBlt((0, 0), (width, height), source_dc, (0, 0), win32con.SRCCOPY)
-
-        raw = bitmap.GetBitmapBits(True)
-        image = np.frombuffer(raw, dtype=np.uint8)
-        image.shape = (height, width, 4)
-        image = image[..., :3]
-        image = np.ascontiguousarray(image)
-
-        source_dc.DeleteDC()
-        memory_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, window_dc)
-        win32gui.DeleteObject(bitmap.GetHandle())
+        with mss.mss() as capture:
+            raw = capture.grab({"left": left, "top": top, "width": width, "height": height})
+            image = np.array(raw, dtype=np.uint8)[..., :3]
+            image = np.ascontiguousarray(image)
 
         return CapturedFrame(image=image, title=title, rect=(left, top, right, bottom), captured_at=datetime.now())
 
@@ -103,3 +93,11 @@ class WindowCapture:
 def titles(windows: Iterable[WindowInfo]) -> list[str]:
     return [window.title for window in windows]
 
+
+class RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]

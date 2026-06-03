@@ -64,6 +64,9 @@ class CoachApp:
         ttk.Button(controls, text="Gerar recomendacao", command=self.recommend_from_form).pack(side="left", padx=(0, 8))
         ttk.Button(controls, text="Overlay", command=self.toggle_overlay).pack(side="left")
 
+        self.status_var = tk.StringVar(value="Pronto.")
+        ttk.Label(shell, textvariable=self.status_var, foreground="#3f4652").pack(fill="x", pady=(0, 8))
+
         window_row = ttk.Frame(shell)
         window_row.pack(fill="x", pady=(0, 12))
         ttk.Label(window_row, text="Janela do TFT:").pack(side="left")
@@ -139,6 +142,12 @@ class CoachApp:
         if self.window_titles and not self.window_var.get():
             preferred = next((title for title in self.window_titles if "league" in title.lower() or "teamfight" in title.lower()), self.window_titles[0])
             self.window_var.set(preferred)
+        if self.window_titles:
+            self.status_var.set(f"{len(self.window_titles)} janelas encontradas. Abra a lista e escolha League/TFT.")
+            self._write_debug({"windows": [{"title": window.title, "rect": window.rect} for window in windows[:40]]})
+        else:
+            self.status_var.set("Nenhuma janela encontrada. Reabra o app e tente novamente.")
+            self._write_debug({"windows": []})
 
     def capture_once(self) -> None:
         title = self.window_var.get().strip()
@@ -165,8 +174,10 @@ class CoachApp:
                 }
             )
             self._render_recommendations(self.engine.recommend(self.last_state))
+            self.status_var.set("Captura feita. Veja a loja detectada e o debug.")
         except Exception as exc:
             messagebox.showerror("Erro na captura", str(exc))
+            self.status_var.set(f"Erro na captura: {exc}")
 
     def recommend_from_form(self) -> None:
         self.last_state = self._merge_manual_state(GameState())
