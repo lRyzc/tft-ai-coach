@@ -1,21 +1,18 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import cv2
+import numpy as np
 
 from tft_ai_coach.vision.ocr import ChampionNameReader
 
 
 def main() -> None:
-    sample = Path("data/screenshots/latest_regions/shop_slot_1.png")
-    if not sample.exists():
-        print("ocr smoke skipped: no live shop crop")
-        return
-    image = cv2.imread(str(sample), cv2.IMREAD_COLOR)
-    reader = ChampionNameReader(["Aurora", "Rhaast", "Briar", "Teemo"])
+    image = np.full((180, 260, 3), (20, 20, 20), dtype=np.uint8)
+    cv2.putText(image, "Illaoi", (20, 145), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 255, 255), 3, cv2.LINE_AA)
+    reader = ChampionNameReader(["Illaoi", "Caitlyn", "Briar", "Teemo"])
     match = reader.read_shop_card(image)
     assert match is not None, "OCR should produce a text candidate"
+    assert match.name == "Illaoi", match
     print("ocr smoke ok", match.raw_text, match.name, match.score)
 
 

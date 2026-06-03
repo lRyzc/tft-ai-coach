@@ -6,15 +6,28 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 import cv2
+from PIL import Image, ImageOps, ImageTk
 
 from tft_ai_coach.advisor import CoachEngine, compact_overlay_summary
 from tft_ai_coach.capture import WindowCapture, list_windows
 from tft_ai_coach.data.ddragon import load_current_index, update_static_data
 from tft_ai_coach.data.meta import load_comps
-from tft_ai_coach.models import GameState, Recommendation
-from tft_ai_coach.paths import SCREENSHOT_DIR, ensure_dirs
+from tft_ai_coach.models import CompDefinition, GameState, Recommendation
+from tft_ai_coach.paths import DDRAGON_DIR, SCREENSHOT_DIR, ensure_dirs
 from tft_ai_coach.ui.overlay import CoachOverlay
 from tft_ai_coach.vision import VisionPipeline
+
+APP_BG = "#0f1117"
+PANEL_BG = "#151a22"
+CARD_BG = "#1c2230"
+CARD_SOFT = "#22293a"
+LINE = "#30384a"
+TEXT = "#f7f3e8"
+MUTED = "#a8b0bf"
+GOLD = "#f0bd3d"
+TEAL = "#59d0c4"
+GREEN = "#5fd17a"
+RED = "#e46b6b"
 
 
 class CoachApp:
@@ -29,12 +42,14 @@ class CoachApp:
         self.vision = VisionPipeline()
         self.overlay = CoachOverlay(self.root)
         self.index = load_current_index()
-        self.engine = CoachEngine(load_comps())
+        self.comps = load_comps()
+        self.engine = CoachEngine(self.comps)
         self.last_state = GameState()
         self.window_titles: list[str] = []
         self.live_running = False
         self.live_after_id: str | None = None
         self.live_interval_ms = 1800
+        self._image_cache: dict[str, ImageTk.PhotoImage] = {}
 
         self._build()
         self.refresh_windows()
@@ -44,44 +59,63 @@ class CoachApp:
         self.root.mainloop()
 
     def _build(self) -> None:
-        self.root.configure(bg="#f4f6f8")
+        self.root.configure(bg=APP_BG)
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("TFrame", background="#f4f6f8")
-        style.configure("TLabel", background="#f4f6f8", foreground="#1a1d24")
+        style.configure("TFrame", background=APP_BG)
+        style.configure("TLabel", background=APP_BG, foreground=TEXT)
         style.configure("TButton", padding=7)
+        style.configure("TNotebook", background=APP_BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=PANEL_BG, foreground=MUTED, padding=(14, 8))
+        style.map("TNotebook.Tab", background=[("selected", CARD_BG)], foreground=[("selected", TEXT)])
+        style.configure("TCombobox", fieldbackground="#f4f6f8")
 
         shell = ttk.Frame(self.root, padding=16)
         shell.pack(fill="both", expand=True)
 
-        header = ttk.Frame(shell)
+        header = tk.Frame(shell, bg=APP_BG)
         header.pack(fill="x")
-        ttk.Label(header, text="TFT AI Coach", font=("Segoe UI", 18, "bold")).pack(side="left")
-        self.data_status = ttk.Label(header, text="")
-        self.data_status.pack(side="right")
+        tk.Label(header, text="TFT AI Coach", bg=APP_BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(side="left")
+        tk.Label(header, text="Meta, leitura de tela e overlay pessoal", bg=APP_BG, fg=MUTED, font=("Segoe UI", 10)).pack(
+            side="left", padx=(12, 0), pady=(10, 0)
+        )
+        self.data_status = tk.Label(header, text="", bg=APP_BG, fg=GOLD, font=("Segoe UI", 9, "bold"))
+        self.data_status.pack(side="right", pady=(8, 0))
 
-        controls = ttk.Frame(shell)
+        controls = tk.Frame(shell, bg=APP_BG)
         controls.pack(fill="x", pady=(14, 10))
-        ttk.Button(controls, text="Atualizar dados TFT", command=self.update_data).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="Listar janelas", command=self.refresh_windows).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="Capturar uma vez", command=self.capture_once).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="Gerar recomendacao", command=self.recommend_from_form).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="Overlay", command=self.toggle_overlay).pack(side="left")
-        self.live_button = ttk.Button(controls, text="Iniciar Live Coach", command=self.toggle_live)
+        self._command_button(controls, "Atualizar dados", self.update_data).pack(side="left", padx=(0, 8))
+        self._command_button(controls, "Listar janelas", self.refresh_windows).pack(side="left", padx=(0, 8))
+        self._command_button(controls, "Capturar uma vez", self.capture_once).pack(side="left", padx=(0, 8))
+        self._command_button(controls, "Gerar recomendacao", self.recommend_from_form).pack(side="left", padx=(0, 8))
+        self._command_button(controls, "Overlay", self.toggle_overlay).pack(side="left")
+        self.live_button = self._command_button(controls, "Iniciar Live Coach", self.toggle_live, primary=True)
         self.live_button.pack(side="left", padx=(8, 0))
 
         self.status_var = tk.StringVar(value="Pronto.")
-        ttk.Label(shell, textvariable=self.status_var, foreground="#3f4652").pack(fill="x", pady=(0, 8))
+        tk.Label(shell, textvariable=self.status_var, bg=APP_BG, fg=MUTED, anchor="w", font=("Segoe UI", 9)).pack(
+            fill="x", pady=(0, 8)
+        )
 
-        window_row = ttk.Frame(shell)
+        window_row = tk.Frame(shell, bg=APP_BG)
         window_row.pack(fill="x", pady=(0, 12))
-        ttk.Label(window_row, text="Janela do TFT:").pack(side="left")
+        tk.Label(window_row, text="Janela do TFT:", bg=APP_BG, fg=TEXT, font=("Segoe UI", 9, "bold")).pack(side="left")
         self.window_var = tk.StringVar()
         self.window_combo = ttk.Combobox(window_row, textvariable=self.window_var, values=[], width=80)
         self.window_combo.pack(side="left", padx=(8, 0), fill="x", expand=True)
 
-        paned = ttk.PanedWindow(shell, orient="horizontal")
-        paned.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(shell)
+        notebook.pack(fill="both", expand=True)
+
+        meta_tab = tk.Frame(notebook, bg=APP_BG)
+        live_tab = tk.Frame(notebook, bg=APP_BG)
+        notebook.add(meta_tab, text="Meta comps")
+        notebook.add(live_tab, text="Leitura ao vivo")
+
+        self._build_meta_panel(meta_tab)
+
+        paned = ttk.PanedWindow(live_tab, orient="horizontal")
+        paned.pack(fill="both", expand=True, padx=2, pady=12)
 
         left = ttk.Frame(paned, padding=10)
         right = ttk.Frame(paned, padding=10)
@@ -90,6 +124,184 @@ class CoachApp:
 
         self._build_state_form(left)
         self._build_results(right)
+
+    def _command_button(self, parent: tk.Widget, text: str, command, primary: bool = False) -> tk.Button:
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=GOLD if primary else CARD_SOFT,
+            fg="#17130a" if primary else TEXT,
+            activebackground="#ffd15d" if primary else "#2c3549",
+            activeforeground="#17130a" if primary else TEXT,
+            relief="flat",
+            borderwidth=0,
+            padx=12,
+            pady=8,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2",
+        )
+
+    def _build_meta_panel(self, parent: tk.Frame) -> None:
+        top = tk.Frame(parent, bg=APP_BG)
+        top.pack(fill="x", pady=(12, 10))
+        copy = tk.Frame(top, bg=APP_BG)
+        copy.pack(side="left", fill="x", expand=True)
+        tk.Label(copy, text="Comps do meta", bg=APP_BG, fg=TEXT, font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        tk.Label(
+            copy,
+            text="Tier, dificuldade, ritmo e unidades chave para estudar antes e durante a partida.",
+            bg=APP_BG,
+            fg=MUTED,
+            font=("Segoe UI", 10),
+        ).pack(anchor="w", pady=(3, 0))
+
+        live_box = tk.Frame(top, bg=PANEL_BG, highlightbackground=LINE, highlightthickness=1, padx=12, pady=8)
+        live_box.pack(side="right", padx=(14, 0))
+        tk.Label(live_box, text="Live Coach", bg=PANEL_BG, fg=TEAL, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(
+            live_box,
+            text="Vendo loja, gold, stage, augments e divindade.",
+            bg=PANEL_BG,
+            fg=TEXT,
+            font=("Segoe UI", 9),
+            wraplength=250,
+            justify="left",
+        ).pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(parent, bg=APP_BG)
+        body.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(body, bg=APP_BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        cards = tk.Frame(canvas, bg=APP_BG)
+        window_id = canvas.create_window((0, 0), window=cards, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        def resize_cards(event: tk.Event) -> None:
+            canvas.itemconfigure(window_id, width=event.width)
+
+        def update_scroll(_event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        canvas.bind("<Configure>", resize_cards)
+        cards.bind("<Configure>", update_scroll)
+        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1 * (event.delta / 120)), "units"))
+
+        for comp in sorted(self.comps, key=_comp_sort_key):
+            self._comp_card(cards, comp)
+
+    def _comp_card(self, parent: tk.Frame, comp: CompDefinition) -> None:
+        card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
+        card.pack(fill="x", pady=6, padx=(0, 10))
+
+        left = tk.Frame(card, bg=CARD_BG, padx=14, pady=12)
+        left.pack(side="left", fill="y")
+        tk.Label(left, text=comp.name, bg=CARD_BG, fg=TEXT, font=("Segoe UI", 12, "bold"), width=20, anchor="w").pack(
+            anchor="w"
+        )
+        badge_row = tk.Frame(left, bg=CARD_BG)
+        badge_row.pack(anchor="w", pady=(8, 0))
+        self._badge(badge_row, comp.stats.get("patch", self.index.get("set_id", "?")), fg=TEXT, bg="#101422").pack(
+            side="left", padx=(0, 5)
+        )
+        self._badge(badge_row, comp.tempo or comp.style, fg=TEXT, bg="#111827").pack(side="left", padx=(0, 5))
+        self._badge(badge_row, comp.difficulty, fg=_difficulty_color(comp.difficulty), bg="#121722").pack(side="left")
+
+        tier = tk.Frame(card, bg=CARD_BG, padx=6, pady=12)
+        tier.pack(side="left", fill="y")
+        tk.Label(
+            tier,
+            text=comp.tier.upper(),
+            bg="#231f12",
+            fg=GOLD,
+            width=3,
+            height=2,
+            font=("Segoe UI", 13, "bold"),
+            highlightbackground=GOLD,
+            highlightthickness=1,
+        ).pack(anchor="center")
+
+        units = tk.Frame(card, bg=CARD_BG, padx=6, pady=10)
+        units.pack(side="left", fill="x", expand=True)
+        for unit in (comp.carry_units + [name for name in comp.core_units if name not in comp.carry_units])[:9]:
+            self._unit_avatar(units, unit, carry=unit in comp.carry_units).pack(side="left", padx=5)
+
+        right = tk.Frame(card, bg=CARD_SOFT, width=104)
+        right.pack(side="right", fill="y")
+        tk.Label(right, text="CARRIES", bg=CARD_SOFT, fg=MUTED, font=("Segoe UI", 7, "bold")).pack(pady=(14, 2))
+        carry_text = ", ".join(comp.carry_units[:2]) or "Flex"
+        tk.Label(right, text=carry_text, bg=CARD_SOFT, fg=TEXT, font=("Segoe UI", 8), wraplength=86).pack()
+        tk.Button(
+            right,
+            text="Focar",
+            command=lambda item=comp: self._focus_comp(item),
+            bg=GOLD,
+            fg="#17130a",
+            activebackground="#ffd15d",
+            activeforeground="#17130a",
+            relief="flat",
+            borderwidth=0,
+            padx=10,
+            pady=5,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+        ).pack(pady=(12, 12))
+
+    def _badge(self, parent: tk.Widget, text: str, fg: str, bg: str) -> tk.Label:
+        return tk.Label(parent, text=text, bg=bg, fg=fg, padx=7, pady=2, font=("Segoe UI", 8, "bold"))
+
+    def _unit_avatar(self, parent: tk.Widget, name: str, carry: bool = False) -> tk.Frame:
+        box = tk.Frame(parent, bg=CARD_BG)
+        photo = self._champion_photo(name, 46)
+        border = GOLD if carry else "#454d61"
+        icon_frame = tk.Frame(box, bg=border, padx=2, pady=2)
+        icon_frame.pack()
+        if photo is not None:
+            tk.Label(icon_frame, image=photo, bg=border).pack()
+        else:
+            tk.Label(icon_frame, text=name[:2].upper(), bg="#111827", fg=TEXT, width=6, height=3).pack()
+        label = _short_name(name)
+        tk.Label(box, text=label, bg=CARD_BG, fg=TEXT, font=("Segoe UI", 8), width=9).pack(pady=(4, 0))
+        return box
+
+    def _champion_photo(self, champion_name: str, size: int) -> ImageTk.PhotoImage | None:
+        record = self._champion_record(champion_name)
+        if record is None:
+            return None
+        path = DDRAGON_DIR / self.index["version"] / "icons" / record["image_group"] / record["image_file"]
+        if not path.exists():
+            return None
+        key = f"{path}:{size}"
+        if key not in self._image_cache:
+            image = Image.open(path).convert("RGB")
+            image = ImageOps.fit(image, (size, size), method=Image.Resampling.LANCZOS)
+            self._image_cache[key] = ImageTk.PhotoImage(image)
+        return self._image_cache[key]
+
+    def _champion_record(self, champion_name: str) -> dict | None:
+        target = _norm_name(champion_name)
+        for record in self.index.get("records", {}).get("champions", []):
+            if _norm_name(record["name"]) == target:
+                return record
+        return None
+
+    def _focus_comp(self, comp: CompDefinition) -> None:
+        self.overlay.show()
+        lines = [
+            "TFT AI Coach | foco",
+            f"Comp: {comp.name} ({comp.tier})",
+            f"Loja: {', '.join(comp.early_units[:5] or comp.core_units[:5])}",
+            f"Escolha: priorize augments de {', '.join(comp.augment_keywords[:3]) or comp.style}",
+            f"Agora: siga {comp.tempo or comp.style}; carries: {', '.join(comp.carry_units[:3]) or 'flex'}",
+            f"Early: {', '.join(comp.early_units[:4]) or '-'}",
+            f"Mid: {', '.join(comp.mid_units[:4]) or '-'}",
+            f"Late: {', '.join(comp.core_units[:5]) or '-'}",
+        ]
+        self.overlay.update_text("\n".join(lines))
+        self.status_var.set(f"Foco definido no overlay: {comp.name}.")
 
     def _build_state_form(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Estado do jogo", font=("Segoe UI", 13, "bold")).pack(anchor="w")
@@ -333,6 +545,40 @@ def _optional_int(value: str) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _comp_sort_key(comp: CompDefinition) -> tuple[int, str]:
+    tier_rank = {"S": 0, "A": 1, "B": 2, "C": 3}.get(comp.tier.upper(), 4)
+    return (tier_rank, comp.name)
+
+
+def _difficulty_color(value: str) -> str:
+    lower = value.lower()
+    if "easy" in lower:
+        return GREEN
+    if "hard" in lower:
+        return RED
+    return GOLD
+
+
+def _short_name(value: str) -> str:
+    aliases = {
+        "Aurelion Sol": "A. Sol",
+        "Miss Fortune": "Miss F.",
+        "The Mighty Mech": "Mech",
+        "Blitzcrank": "Blitz",
+        "Mordekaiser": "Morde",
+        "Rammus": "Ramm.",
+    }
+    if value in aliases:
+        return aliases[value]
+    if len(value) <= 8:
+        return value
+    return value[:7] + "."
+
+
+def _norm_name(value: str) -> str:
+    return "".join(ch for ch in value.lower() if ch.isalnum())
 
 
 def main() -> None:

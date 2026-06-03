@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import unicodedata
 
 import cv2
 import numpy as np
@@ -39,6 +40,7 @@ class VisionPipeline:
 
         self._detect_shop(frame, state)
         self._detect_numbers_and_round(frame, state)
+        self._detect_decision_context(frame, state)
         self._detect_augments(frame, state)
         return state
 
@@ -143,6 +145,23 @@ class VisionPipeline:
         state.level = _first_int(level_text)
         self.debug["hud"] = {"stage": state.stage, "gold_text": gold_text, "level_text": level_text}
 
+    def _detect_decision_context(self, frame: np.ndarray, state: GameState) -> None:
+        banner = self._read_region_text(frame, "decision_banner", scale=3, psm=6)
+        normalized = _fold(banner)
+        context = "game"
+        options: list[str] = []
+        if "divindade" in normalized or "oferece" in normalized:
+            context = "divinity_choice"
+            options = _known_names_in_text(banner, [template.name for template in self._champion_matcher().templates])
+        state.screen_context = context
+        state.decision_text = banner
+        state.decision_options = options
+        self.debug["decision_context"] = {
+            "banner": banner,
+            "context": context,
+            "options": options,
+        }
+
     def _detect_augments(self, frame: np.ndarray, state: GameState) -> None:
         title = self._read_region_text(frame, "augment_title", scale=3)
         title_lower = title.lower()
@@ -152,6 +171,9 @@ class VisionPipeline:
             state.augments = []
             self.debug["augments"] = []
             return
+
+        state.screen_context = "augment_choice"
+        state.decision_text = title
 
         augments: list[str] = []
         debug: list[dict[str, str]] = []
@@ -171,6 +193,7 @@ class VisionPipeline:
         region_name: str,
         whitelist: str = "",
         scale: int = 3,
+        psm: int = 7,
     ) -> str:
         region = self.layout.regions[region_name]
         height, width = frame.shape[:2]
@@ -178,7 +201,7 @@ class VisionPipeline:
         crop = frame[y : y + h, x : x + w]
         if crop.size == 0:
             return ""
-        return read_text(crop, psm=7, whitelist=whitelist, scale=scale)
+        return read_text(crop, psm=psm, whitelist=whitelist, scale=scale)
 
     def export_debug_crops(self, frame: np.ndarray, output_dir: Path) -> list[Path]:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -217,3 +240,17 @@ def _clean_augment_text(value: str) -> str:
     if any(word in lower for word in blocked):
         return ""
     return cleaned
+
+
+def _known_names_in_text(text: str, names: list[str]) -> list[str]:
+    normalized = _fold(text)
+    found: list[str] = []
+    for name in names:
+        if _fold(name) in normalized:
+            found.append(name)
+    return found
+
+
+def _fold(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in decomposed.lower() if ch.isalnum())

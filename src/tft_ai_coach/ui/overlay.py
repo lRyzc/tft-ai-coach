@@ -24,7 +24,7 @@ class CoachOverlay:
         self.shop_var = tk.StringVar(value="Loja: aguardando")
         self.action_var = tk.StringVar(value="Agora: aguardando estado do jogo")
         self.economy_var = tk.StringVar(value="Economia: aguardando gold/level")
-        self.augment_var = tk.StringVar(value="Augments: sem tela de augment")
+        self.augment_var = tk.StringVar(value="sem escolha especial na tela")
         self.reason_var = tk.StringVar(value="")
         self.early_var = tk.StringVar(value="Early: -")
         self.mid_var = tk.StringVar(value="Mid: -")
@@ -106,7 +106,7 @@ class CoachOverlay:
         self._section(body, "Loja", self.shop_var, accent=TEAL)
         self._section(body, "Agora", self.action_var, accent=GOLD)
         self._section(body, "Economia", self.economy_var, accent=WARN)
-        self._section(body, "Augments", self.augment_var, accent=TEAL)
+        self._section(body, "Escolha", self.augment_var, accent=TEAL)
         self._label(body, self.reason_var, fg=MUTED, bg=BG, font=("Segoe UI", 8), pady=(3, 6))
 
         plan = tk.Frame(body, bg=BG)
@@ -212,7 +212,7 @@ class CoachOverlay:
         self.shop_var.set(parsed.get("shop", "Loja: aguardando"))
         self.action_var.set(parsed.get("action", "Agora: aguardando estado do jogo"))
         self.economy_var.set(parsed.get("economy", "Economia: aguardando gold/level"))
-        self.augment_var.set(parsed.get("augments", "Augments: sem tela de augment"))
+        self.augment_var.set(parsed.get("augments", "sem escolha especial na tela"))
         self.reason_var.set(parsed.get("reason", ""))
         self.early_var.set(parsed.get("early", "Early: -"))
         self.mid_var.set(parsed.get("mid", "Mid: -"))
@@ -237,6 +237,10 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
             parsed["economy"] = _wrap(line[9:].strip(), 56)
         elif lower.startswith("augments:"):
             parsed["augments"] = _wrap(line[9:].strip(), 56)
+        elif lower.startswith("escolha:"):
+            parsed["augments"] = _wrap(line[8:].strip(), 56)
+        elif lower.startswith("divindade:"):
+            parsed["augments"] = _wrap(line, 56)
         elif lower.startswith("agora:"):
             parsed["action"] = _wrap(line[6:].strip(), 56)
         elif lower.startswith("por que:"):

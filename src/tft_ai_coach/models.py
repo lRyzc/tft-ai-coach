@@ -18,6 +18,9 @@ class GameState:
     level: int | None = None
     gold: int | None = None
     health: int | None = None
+    screen_context: str = "game"
+    decision_text: str = ""
+    decision_options: list[str] = field(default_factory=list)
     board: list[str] = field(default_factory=list)
     bench: list[str] = field(default_factory=list)
     shop: list[str] = field(default_factory=list)
@@ -37,6 +40,9 @@ class CompDefinition:
     name: str
     tier: str = "B"
     style: str = "flex"
+    difficulty: str = "Medium"
+    tempo: str = ""
+    stats: dict[str, str] = field(default_factory=dict)
     core_units: list[str] = field(default_factory=list)
     carry_units: list[str] = field(default_factory=list)
     early_units: list[str] = field(default_factory=list)

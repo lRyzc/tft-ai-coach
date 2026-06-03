@@ -11,7 +11,9 @@ Personal TFT companion prototype for screen-based coaching, patch-aware data, an
 - OCR-assisted champion name reading for the shop, using Tesseract when installed.
 - Live Coach mode that keeps reading the selected game window and updates a compact overlay automatically.
 - Minimal, draggable in-game overlay focused on comp, shop, economy, augments, and early/mid/late plan.
+- Dark meta-comps dashboard with tier, difficulty, tempo, carry units, and champion icons.
 - Early HUD OCR for stage, level, gold, and augment-choice screens.
+- First-pass special choice detection for Divinity and augment screens.
 - Debug crop export for shop, board, bench, augments, stage, and gold regions.
 - Early recommendation engine that scores comp routes from board, bench, shop, items, gold, level, and stage.
 - Research notes on open-source TFT projects worth mining for ideas.
