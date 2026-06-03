@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Local dependency/cache folders
+work/
+data/ddragon/
+data/screenshots/
+data/snapshots/
+data/runtime/
+data/meta/comps.json
+
+# Local configuration
+.env
+config.local.json

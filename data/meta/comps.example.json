@@ -1,0 +1,80 @@
+{
+  "patch": "manual-starter",
+  "comps": [
+    {
+      "id": "ad-flex",
+      "name": "AD Flex",
+      "tier": "A",
+      "style": "flex",
+      "core_units": ["Xayah", "Graves", "Ezreal", "Jhin"],
+      "carry_units": ["Xayah", "Graves", "Jhin"],
+      "early_units": ["Ezreal", "Leona"],
+      "mid_units": ["Ezreal", "Leona", "Mordekaiser"],
+      "alternative_units": ["Miss Fortune", "Diana"],
+      "carousel_priority": ["Recurve Bow", "B.F. Sword", "Sparring Gloves"],
+      "core_items": ["Guinsoo's Rageblade", "Infinity Edge", "Last Whisper"],
+      "item_tags": ["attack damage", "bow", "sword", "crit", "attack speed"],
+      "augment_keywords": ["attack", "speed", "damage", "crit"],
+      "economy_plan": "Keep econ healthy, play strongest board, and look for a 4-cost AD carry on level 8.",
+      "leveling_plan": {
+        "2": "Play upgraded frontline plus any item holder.",
+        "3": "Push tempo if winstreaking; otherwise keep pairs and econ.",
+        "4": "Roll only to stabilize if HP is low, then go level 8 for carry upgrades."
+      },
+      "notes": [
+        "Prioritize a real frontline before adding extra backline damage.",
+        "Good when early components are Sword, Bow, Glove, or Cloak."
+      ]
+    },
+    {
+      "id": "ap-flex",
+      "name": "AP Flex",
+      "tier": "A",
+      "style": "flex",
+      "core_units": ["Zoe", "LeBlanc", "Morgana", "Lissandra"],
+      "carry_units": ["Zoe", "LeBlanc", "Morgana"],
+      "early_units": ["Zoe", "Lissandra"],
+      "mid_units": ["Zoe", "Lissandra", "Mordekaiser"],
+      "alternative_units": ["Diana", "Miss Fortune"],
+      "carousel_priority": ["Needlessly Large Rod", "Tear of the Goddess", "Giant's Belt"],
+      "core_items": ["Spear of Shojin", "Jeweled Gauntlet", "Nashor's Tooth"],
+      "item_tags": ["ability power", "rod", "tear", "mana", "magic"],
+      "augment_keywords": ["ability", "mana", "spell", "magic"],
+      "economy_plan": "Stabilize with upgraded casters, then push level 8 for higher-cost AP upgrades.",
+      "leveling_plan": {
+        "2": "Use any upgraded caster or ranged holder with a small frontline.",
+        "3": "Prefer AP item holders and protect HP.",
+        "4": "Roll for upgraded AP carry/frontline only if the board is losing hard."
+      },
+      "notes": [
+        "Stronger when you already have Tear/Rod starts.",
+        "Avoid tunneling if the shop gives mostly AD pairs."
+      ]
+    },
+    {
+      "id": "frontline-stabilize",
+      "name": "Frontline Stabilize",
+      "tier": "B",
+      "style": "stabilize",
+      "core_units": ["Leona", "Cho'Gath", "Tahm Kench", "Mordekaiser", "Pantheon"],
+      "carry_units": [],
+      "early_units": ["Leona", "Cho'Gath"],
+      "mid_units": ["Leona", "Cho'Gath", "Mordekaiser", "Pantheon"],
+      "alternative_units": ["Tahm Kench", "Rhaast"],
+      "carousel_priority": ["Giant's Belt", "Chain Vest", "Negatron Cloak"],
+      "core_items": ["Warmog's Armor", "Bramble Vest", "Dragon's Claw"],
+      "item_tags": ["armor", "health", "magic resist", "belt", "chain vest", "cloak"],
+      "augment_keywords": ["defense", "shield", "health", "armor"],
+      "economy_plan": "Buy frontline pairs and preserve HP while waiting for a clearer carry direction.",
+      "leveling_plan": {
+        "2": "Make upgraded frontline and avoid bleeding too much HP.",
+        "3": "Hold flexible carries while using tank items immediately.",
+        "4": "Pivot once items or shop clearly point to AD/AP."
+      },
+      "notes": [
+        "This is a bridge line, not the final cap.",
+        "Useful when items and shops disagree."
+      ]
+    }
+  ]
+}
