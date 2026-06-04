@@ -392,6 +392,8 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
             parsed["comp"] = _wrap(line, 52)
         elif lower.startswith("loja:"):
             parsed["shop"] = _format_shop(line[5:].strip())
+        elif lower.startswith("plano:"):
+            parsed["action"] = _wrap(line[6:].strip(), 56)
         elif lower.startswith("economia:"):
             parsed["economy"] = _wrap(line[9:].strip(), 56)
         elif lower.startswith("augments:"):

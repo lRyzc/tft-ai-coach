@@ -4,6 +4,7 @@ import unicodedata
 
 from rapidfuzz import fuzz
 
+from tft_ai_coach.advisor.phase import phase_name, phase_units
 from tft_ai_coach.models import CompDefinition, DecisionOption, GameState, Recommendation
 
 
@@ -53,7 +54,7 @@ def ranked_decision_options(
     if not state.decision_slots:
         return []
     comp = recommendations[0].comp if recommendations else None
-    scored = [(option, _score_option(option, comp)) for option in state.decision_slots]
+    scored = [(option, _score_option(option, comp, state)) for option in state.decision_slots]
     scored = [(option, score) for option, score in scored if score >= _minimum_score(option)]
     scored.sort(key=lambda item: item[1], reverse=True)
     if not scored:
@@ -63,7 +64,7 @@ def ranked_decision_options(
     output: list[tuple[DecisionOption, str]] = []
     for index, (option, _score) in enumerate(scored[:limit]):
         runner_up = scored[index + 1][0].name if index == 0 and len(scored) > 1 else ""
-        output.append((option, _option_reason(option, comp, runner_up)))
+        output.append((option, _option_reason(option, comp, state, runner_up)))
     return output
 
 
@@ -132,9 +133,9 @@ def _score_augment(name: str, comp: CompDefinition | None) -> float:
     return score
 
 
-def _score_option(option: DecisionOption, comp: CompDefinition | None) -> float:
+def _score_option(option: DecisionOption, comp: CompDefinition | None, state: GameState | None = None) -> float:
     if option.kind == "shop":
-        return _score_shop(option, comp) + option.confidence
+        return _score_shop(option, comp, state) + option.confidence
     if option.kind == "divinity":
         return _score_divinity(option.name, comp) + option.confidence
     if option.kind == "augment":
@@ -150,9 +151,14 @@ def _minimum_score(option: DecisionOption) -> float:
     return 0.01
 
 
-def _option_reason(option: DecisionOption, comp: CompDefinition | None, runner_up: str = "") -> str:
+def _option_reason(
+    option: DecisionOption,
+    comp: CompDefinition | None,
+    state: GameState,
+    runner_up: str = "",
+) -> str:
     if option.kind == "shop":
-        return _shop_reason(option, comp)
+        return _shop_reason(option, comp, state)
     if option.kind == "divinity":
         tier, _tags, reason = DIVINITY_NOTES.get(option.name, ("B", [], "melhor encaixe geral agora"))
         label = f"{option.name} ({tier})"
@@ -177,28 +183,34 @@ def _option_reason(option: DecisionOption, comp: CompDefinition | None, runner_u
     return option.name
 
 
-def _score_shop(option: DecisionOption, comp: CompDefinition | None) -> float:
+def _score_shop(option: DecisionOption, comp: CompDefinition | None, state: GameState | None) -> float:
     if comp is None:
         return 0.0
     normalized = _norm(option.name)
     score = 0.0
+    active_units = {_norm(unit) for unit in phase_units(comp, state or GameState())}
     if normalized in {_norm(unit) for unit in comp.carry_units}:
-        score += 32
-    if normalized in {_norm(unit) for unit in comp.core_units}:
         score += 24
+    if normalized in active_units:
+        score += 28
+    if normalized in {_norm(unit) for unit in comp.core_units}:
+        score += 14
     if normalized in {_norm(unit) for unit in comp.mid_units}:
-        score += 16
-    if normalized in {_norm(unit) for unit in comp.early_units}:
         score += 12
+    if normalized in {_norm(unit) for unit in comp.early_units}:
+        score += 10
     if normalized in {_norm(unit) for unit in comp.alternative_units}:
         score += 8
     return score
 
 
-def _shop_reason(option: DecisionOption, comp: CompDefinition | None) -> str:
+def _shop_reason(option: DecisionOption, comp: CompDefinition | None, state: GameState) -> str:
     if comp is None:
         return f"{option.name}: comprar se for upgrade ou par"
     normalized = _norm(option.name)
+    current_phase = phase_name(state)
+    if normalized in {_norm(unit) for unit in phase_units(comp, state)}:
+        return f"{option.name}: comprar, peca do plano {current_phase}"
     if normalized in {_norm(unit) for unit in comp.carry_units}:
         return f"{option.name}: comprar, carry chave da {comp.name}"
     if normalized in {_norm(unit) for unit in comp.core_units}:

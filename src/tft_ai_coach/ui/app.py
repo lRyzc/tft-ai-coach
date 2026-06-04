@@ -51,6 +51,7 @@ class CoachApp:
         self.live_interval_ms = 1800
         self._image_cache: dict[str, ImageTk.PhotoImage] = {}
         self.last_capture_rect: tuple[int, int, int, int] | None = None
+        self.focused_comp_id: str | None = None
 
         self._build()
         self.refresh_windows()
@@ -92,6 +93,7 @@ class CoachApp:
         self._command_button(controls, "Overlay", self.toggle_overlay).pack(side="left")
         self.aura_button = self._command_button(controls, self._aura_button_text(), self.toggle_choice_aura)
         self.aura_button.pack(side="left", padx=(8, 0))
+        self._command_button(controls, "Auto comp", self.clear_focused_comp).pack(side="left", padx=(8, 0))
         self.live_button = self._command_button(controls, "Iniciar Live Coach", self.toggle_live, primary=True)
         self.live_button.pack(side="left", padx=(8, 0))
 
@@ -292,6 +294,7 @@ class CoachApp:
         return None
 
     def _focus_comp(self, comp: CompDefinition) -> None:
+        self.focused_comp_id = comp.id
         self.overlay.show()
         lines = [
             "TFT AI Coach | foco",
@@ -304,7 +307,7 @@ class CoachApp:
             f"Late: {', '.join(comp.core_units[:5]) or '-'}",
         ]
         self.overlay.update_text("\n".join(lines))
-        self.status_var.set(f"Foco definido no overlay: {comp.name}.")
+        self.status_var.set(f"Comp alvo travada no Live Coach: {comp.name}.")
 
     def _build_state_form(self, parent: ttk.Frame) -> None:
         ttk.Label(parent, text="Estado do jogo", font=("Segoe UI", 13, "bold")).pack(anchor="w")
@@ -375,7 +378,7 @@ class CoachApp:
             state, debug_payload = self._capture_and_analyze(hide_root=True, save_debug=True)
             self._populate_empty_fields(state, force=False)
             self.last_state = self._merge_manual_state(state)
-            recommendations = self.engine.recommend(self.last_state)
+            recommendations = self._recommend(self.last_state)
             self._write_debug(debug_payload)
             self._render_recommendations(recommendations)
             self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
@@ -421,7 +424,7 @@ class CoachApp:
             state, debug_payload = self._capture_and_analyze(hide_root=False, save_debug=False)
             self._populate_empty_fields(state, force=True)
             self.last_state = self._merge_manual_state(state)
-            recommendations = self.engine.recommend(self.last_state)
+            recommendations = self._recommend(self.last_state)
             self._render_recommendations(recommendations)
             self.overlay.update_text(compact_overlay_summary(self.last_state, recommendations))
             self.overlay.update_guides(self.last_state, recommendations, self.last_capture_rect)
@@ -470,7 +473,7 @@ class CoachApp:
 
     def recommend_from_form(self) -> None:
         self.last_state = self._merge_manual_state(GameState())
-        self._render_recommendations(self.engine.recommend(self.last_state))
+        self._render_recommendations(self._recommend(self.last_state))
 
     def toggle_overlay(self) -> None:
         self.overlay.show()
@@ -485,6 +488,10 @@ class CoachApp:
 
     def _aura_button_text(self) -> str:
         return "Aura ON" if self.overlay.choice_aura_enabled() else "Aura OFF"
+
+    def clear_focused_comp(self) -> None:
+        self.focused_comp_id = None
+        self.status_var.set("Comp alvo liberada. O coach voltou para modo automatico.")
 
     def _merge_manual_state(self, base: GameState) -> GameState:
         manual_stage = self.stage_var.get().strip()
@@ -537,6 +544,21 @@ class CoachApp:
         self.recommendation_text.delete("1.0", "end")
         self.recommendation_text.insert("1.0", output)
         self.overlay.update_text(self._overlay_text())
+
+    def _recommend(self, state: GameState) -> list[Recommendation]:
+        recommendations = self.engine.recommend(state, limit=max(3, len(self.comps)))
+        if not self.focused_comp_id:
+            return recommendations[:3]
+        focused_index = next(
+            (index for index, rec in enumerate(recommendations) if rec.comp.id == self.focused_comp_id),
+            None,
+        )
+        if focused_index is None:
+            return recommendations[:3]
+        focused = recommendations.pop(focused_index)
+        if "Comp fixada manualmente como plano alvo." not in focused.reasons:
+            focused.reasons.insert(0, "Comp fixada manualmente como plano alvo.")
+        return [focused] + recommendations[:2]
 
     def _overlay_text(self) -> str:
         text = self.recommendation_text.get("1.0", "end").strip()
