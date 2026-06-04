@@ -151,9 +151,43 @@ class VisionPipeline:
         state.stage = self._read_region_text(frame, "stage", "0123456789-", scale=4)
         gold_text = self._read_region_text(frame, "gold", "0123456789", scale=5)
         level_text = self._read_region_text(frame, "level", "0123456789Nv.", scale=4)
+        xp_text = self._read_region_text(frame, "xp", "0123456789/", scale=5, psm=7)
+        odds_text = self._read_region_text(frame, "shop_odds", "0123456789", scale=4, psm=6)
+        streak_text = self._read_region_text(frame, "streak", "0123456789", scale=5, psm=7)
+        health_text = self._read_region_text(frame, "health", "0123456789", scale=5, psm=7)
         state.gold = _first_int(gold_text)
         state.level = _first_int(level_text)
-        self.debug["hud"] = {"stage": state.stage, "gold_text": gold_text, "level_text": level_text}
+        state.xp_current, state.xp_needed = _xp_pair(xp_text)
+        state.shop_odds = _odds(odds_text)
+        state.streak_count = _first_int(streak_text)
+        state.streak_type = self._streak_type(frame)
+        health = _first_int(health_text)
+        if health is not None and 0 <= health <= 100:
+            state.health = health
+        self.debug["hud"] = {
+            "stage": state.stage,
+            "gold_text": gold_text,
+            "level_text": level_text,
+            "xp_text": xp_text,
+            "odds_text": odds_text,
+            "streak_text": streak_text,
+            "streak_type": state.streak_type,
+            "health_text": health_text,
+        }
+
+    def _streak_type(self, frame: np.ndarray) -> str:
+        region = self.layout.regions["streak"]
+        height, width = frame.shape[:2]
+        x, y, w, h = region.scale(width, height)
+        crop = frame[y : y + h, x : x + w]
+        if crop.size == 0:
+            return ""
+        b, g, r = [float(v) for v in np.mean(crop.reshape(-1, 3), axis=0)]
+        if b > r * 1.15 and b > g * 1.05:
+            return "loss"
+        if r > b * 1.15:
+            return "win"
+        return ""
 
     def _detect_decision_context(self, frame: np.ndarray, state: GameState) -> None:
         banner = self._read_region_text(frame, "decision_banner", scale=3, psm=6)
@@ -321,6 +355,20 @@ def _first_int(value: str) -> int | None:
         return int(digits[0])
     except ValueError:
         return None
+
+
+def _xp_pair(value: str) -> tuple[int | None, int | None]:
+    digits = [int(part) for part in "".join(ch if ch.isdigit() else " " for ch in value).split()]
+    if len(digits) >= 2:
+        return digits[0], digits[1]
+    return None, None
+
+
+def _odds(value: str) -> list[int]:
+    digits = [int(part) for part in "".join(ch if ch.isdigit() else " " for ch in value).split()]
+    if len(digits) >= 5:
+        return digits[:5]
+    return digits
 
 
 def _clean_augment_text(value: str) -> str:

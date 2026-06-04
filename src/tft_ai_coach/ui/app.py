@@ -52,6 +52,8 @@ class CoachApp:
         self._image_cache: dict[str, ImageTk.PhotoImage] = {}
         self.last_capture_rect: tuple[int, int, int, int] | None = None
         self.focused_comp_id: str | None = None
+        self.selected_guide: tk.Frame | None = None
+        self.selected_guide_comp_id: str | None = None
 
         self._build()
         self.refresh_windows()
@@ -254,6 +256,21 @@ class CoachApp:
             font=("Segoe UI", 8, "bold"),
             cursor="hand2",
         ).pack(pady=(12, 12))
+        tk.Button(
+            right,
+            text="Guia",
+            command=lambda item=comp, root=parent: self._toggle_comp_guide(root, item, card),
+            bg="#5a4b87",
+            fg=TEXT,
+            activebackground="#6a5a9f",
+            activeforeground=TEXT,
+            relief="flat",
+            borderwidth=0,
+            padx=10,
+            pady=5,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+        ).pack(pady=(0, 12))
 
     def _badge(self, parent: tk.Widget, text: str, fg: str, bg: str) -> tk.Label:
         return tk.Label(parent, text=text, bg=bg, fg=fg, padx=7, pady=2, font=("Segoe UI", 8, "bold"))
@@ -261,7 +278,7 @@ class CoachApp:
     def _unit_avatar(self, parent: tk.Widget, name: str, carry: bool = False) -> tk.Frame:
         box = tk.Frame(parent, bg=CARD_BG)
         photo = self._champion_photo(name, 46)
-        border = GOLD if carry else "#454d61"
+        border = GOLD if carry else _rarity_color(self._champion_cost(name))
         icon_frame = tk.Frame(box, bg=border, padx=2, pady=2)
         icon_frame.pack()
         if photo is not None:
@@ -270,6 +287,15 @@ class CoachApp:
             tk.Label(icon_frame, text=name[:2].upper(), bg="#111827", fg=TEXT, width=6, height=3).pack()
         label = _short_name(name)
         tk.Label(box, text=label, bg=CARD_BG, fg=TEXT, font=("Segoe UI", 8), width=9).pack(pady=(4, 0))
+        return box
+
+    def _item_icon(self, parent: tk.Widget, item_name: str, size: int = 22) -> tk.Frame:
+        box = tk.Frame(parent, bg=CARD_BG)
+        photo = self._item_photo(item_name, size)
+        if photo is not None:
+            tk.Label(box, image=photo, bg=CARD_BG).pack(side="left")
+        else:
+            tk.Label(box, text=item_name[:2].upper(), bg="#111827", fg=TEXT, width=3).pack(side="left")
         return box
 
     def _champion_photo(self, champion_name: str, size: int) -> ImageTk.PhotoImage | None:
@@ -292,6 +318,184 @@ class CoachApp:
             if _norm_name(record["name"]) == target:
                 return record
         return None
+
+    def _champion_cost(self, champion_name: str) -> int | None:
+        record = self._champion_record(champion_name)
+        if record is None:
+            return None
+        return record.get("cost")
+
+    def _item_photo(self, item_name: str, size: int) -> ImageTk.PhotoImage | None:
+        target = _norm_name(item_name)
+        record = next(
+            (item for item in self.index.get("records", {}).get("items", []) if _norm_name(item.get("name", "")) == target),
+            None,
+        )
+        if record is None:
+            return None
+        path = DDRAGON_DIR / self.index["version"] / "icons" / record["image_group"] / record["image_file"]
+        if not path.exists():
+            return None
+        key = f"{path}:{size}"
+        if key not in self._image_cache:
+            image = Image.open(path).convert("RGB")
+            image = ImageOps.fit(image, (size, size), method=Image.Resampling.LANCZOS)
+            self._image_cache[key] = ImageTk.PhotoImage(image)
+        return self._image_cache[key]
+
+    def _toggle_comp_guide(self, parent: tk.Frame, comp: CompDefinition, after_card: tk.Frame) -> None:
+        if self.selected_guide is not None:
+            self.selected_guide.destroy()
+            self.selected_guide = None
+            if self.selected_guide_comp_id == comp.id:
+                self.selected_guide_comp_id = None
+                return
+        guide = tk.Frame(parent, bg="#111326", highlightbackground="#45336f", highlightthickness=1)
+        guide.pack(fill="x", padx=(10, 20), pady=(0, 12), after=after_card)
+        self.selected_guide = guide
+        self.selected_guide_comp_id = comp.id
+        self._build_comp_guide(guide, comp)
+
+    def _build_comp_guide(self, guide: tk.Frame, comp: CompDefinition) -> None:
+        shell = tk.Frame(guide, bg="#111326", padx=20, pady=16)
+        shell.pack(fill="both", expand=True)
+
+        header = tk.Frame(shell, bg="#111326")
+        header.pack(fill="x")
+        tk.Label(header, text=comp.name, bg="#111326", fg=TEXT, font=("Segoe UI", 16, "bold")).pack(side="left")
+        for text, color in [
+            (comp.tier.upper(), GOLD),
+            (comp.tempo or comp.style, TEAL),
+            (comp.difficulty, _difficulty_color(comp.difficulty)),
+        ]:
+            tk.Label(header, text=text, bg="#1d1832", fg=color, padx=9, pady=3, font=("Segoe UI", 9, "bold")).pack(
+                side="left", padx=(10, 0)
+            )
+        tk.Button(
+            header,
+            text="Focar no Live",
+            command=lambda item=comp: self._focus_comp(item),
+            bg=GOLD,
+            fg="#17130a",
+            activebackground="#ffd15d",
+            relief="flat",
+            borderwidth=0,
+            padx=12,
+            pady=6,
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="right")
+
+        intro = comp.guide or "Use this comp as a target line and let the Live Coach adapt shop/economy decisions by stage."
+        tk.Label(
+            shell,
+            text=intro,
+            bg="#111326",
+            fg=TEXT,
+            justify="left",
+            anchor="w",
+            wraplength=680,
+            font=("Segoe UI", 10),
+        ).pack(fill="x", pady=(12, 16))
+
+        row = tk.Frame(shell, bg="#111326")
+        row.pack(fill="x")
+        left = tk.Frame(row, bg="#111326")
+        left.pack(side="left", fill="both", expand=True)
+        right = tk.Frame(row, bg="#111326")
+        right.pack(side="right", fill="both", padx=(18, 0))
+
+        self._guide_section(left, "SINERGIAS")
+        syn_row = tk.Frame(left, bg="#111326")
+        syn_row.pack(anchor="w", pady=(0, 14))
+        for synergy in comp.synergies or [comp.style, comp.tempo]:
+            tk.Label(syn_row, text=synergy, bg="#2a2442", fg=TEXT, padx=8, pady=4, font=("Segoe UI", 8, "bold")).pack(
+                side="left", padx=(0, 6)
+            )
+
+        self._guide_section(left, "CARRYS E ITENS")
+        for carry in comp.carry_order or comp.carry_units:
+            carry_row = tk.Frame(left, bg="#111326")
+            carry_row.pack(anchor="w", pady=(0, 8))
+            self._unit_avatar(carry_row, carry, carry=True).pack(side="left")
+            tk.Label(carry_row, text=">", bg="#111326", fg=MUTED, padx=6, font=("Segoe UI", 10, "bold")).pack(side="left")
+            for item in comp.item_builds.get(carry, comp.core_items[:3]):
+                self._item_icon(carry_row, item, size=26).pack(side="left", padx=(0, 5))
+
+        self._guide_section(left, "CARROSSEL")
+        car_row = tk.Frame(left, bg="#111326")
+        car_row.pack(anchor="w", pady=(0, 14))
+        for item in comp.carousel_priority[:5]:
+            item_box = tk.Frame(car_row, bg="#111326")
+            item_box.pack(side="left", padx=(0, 10))
+            self._item_icon(item_box, item, size=28).pack()
+            tk.Label(item_box, text=_short_name(item), bg="#111326", fg=MUTED, font=("Segoe UI", 7), width=9).pack()
+
+        self._guide_section(left, "AUMENTOS")
+        aug_grid = tk.Frame(left, bg="#111326")
+        aug_grid.pack(anchor="w", pady=(0, 12))
+        for col, tier in enumerate(["1", "2", "3"]):
+            tier_box = tk.Frame(aug_grid, bg="#18142a", padx=8, pady=6)
+            tier_box.grid(row=0, column=col, padx=(0, 8), sticky="n")
+            tk.Label(tier_box, text=f"CAMADA {tier}", bg="#18142a", fg=MUTED, font=("Segoe UI", 7, "bold")).pack(anchor="w")
+            for augment in comp.augment_tiers.get(tier, comp.augment_keywords[:3]):
+                tk.Label(tier_box, text=augment, bg="#18142a", fg=TEXT, font=("Segoe UI", 8), wraplength=120).pack(
+                    anchor="w", pady=(4, 0)
+                )
+
+        self._guide_section(right, "FORMACAO")
+        self._positioning_board(right, comp)
+
+        self._guide_section(shell, "LEVEL GUIDE")
+        lvl = tk.Frame(shell, bg="#111326")
+        lvl.pack(fill="x", pady=(4, 0))
+        guide = comp.leveling_guide or _default_leveling_guide(comp)
+        for step in guide:
+            box = tk.Frame(lvl, bg="#18142a", padx=10, pady=8)
+            box.pack(side="left", padx=(0, 8), fill="x", expand=True)
+            tk.Label(box, text=step.get("stage", "?"), bg="#18142a", fg=GOLD, font=("Segoe UI", 8, "bold")).pack()
+            tk.Label(box, text=step.get("level", "-"), bg="#18142a", fg=TEXT, font=("Segoe UI", 18, "bold")).pack()
+            tk.Label(box, text=step.get("gold", ""), bg="#18142a", fg=MUTED, font=("Segoe UI", 8)).pack()
+            tk.Label(box, text=step.get("note", ""), bg="#18142a", fg=GOLD, font=("Segoe UI", 7), wraplength=90).pack()
+
+    def _guide_section(self, parent: tk.Widget, title: str) -> None:
+        tk.Label(parent, text=title, bg="#111326", fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 8))
+
+    def _positioning_board(self, parent: tk.Widget, comp: CompDefinition) -> None:
+        canvas = tk.Canvas(parent, width=390, height=210, bg="#111326", highlightthickness=0)
+        canvas.pack()
+        cell_w = 44
+        cell_h = 34
+        origin_x = 22
+        origin_y = 18
+        positions_by_cell = {tuple(value): name for name, value in comp.positioning.items()}
+        for row in range(4):
+            for col in range(7):
+                x = origin_x + col * cell_w + (row % 2) * 22
+                y = origin_y + row * cell_h
+                points = [
+                    x + 11,
+                    y,
+                    x + 33,
+                    y,
+                    x + 44,
+                    y + 17,
+                    x + 33,
+                    y + 34,
+                    x + 11,
+                    y + 34,
+                    x,
+                    y + 17,
+                ]
+                unit = positions_by_cell.get((row, col))
+                fill = "#272147" if unit else "#171331"
+                outline = _rarity_color(self._champion_cost(unit)) if unit else "#342a56"
+                canvas.create_polygon(points, fill=fill, outline=outline, width=2)
+                if unit:
+                    photo = self._champion_photo(unit, 30)
+                    if photo is not None:
+                        canvas.create_image(x + 22, y + 17, image=photo)
+                    if unit in comp.carry_order or unit in comp.carry_units:
+                        canvas.create_text(x + 22, y - 4, text="***", fill=GOLD, font=("Segoe UI", 8, "bold"))
 
     def _focus_comp(self, comp: CompDefinition) -> None:
         self.focused_comp_id = comp.id
@@ -317,10 +521,25 @@ class CoachApp:
         self.stage_var = tk.StringVar()
         self.level_var = tk.StringVar()
         self.gold_var = tk.StringVar()
+        self.health_var = tk.StringVar()
+        self.xp_var = tk.StringVar()
+        self.streak_var = tk.StringVar()
+        self.odds_var = tk.StringVar()
 
-        for idx, (label, var) in enumerate([("Stage", self.stage_var), ("Level", self.level_var), ("Gold", self.gold_var)]):
-            ttk.Label(form, text=label).grid(row=0, column=idx * 2, sticky="w", padx=(0, 6))
-            ttk.Entry(form, textvariable=var, width=10).grid(row=0, column=idx * 2 + 1, sticky="ew", padx=(0, 12))
+        fields = [
+            ("Stage", self.stage_var),
+            ("Level", self.level_var),
+            ("Gold", self.gold_var),
+            ("HP", self.health_var),
+            ("XP", self.xp_var),
+            ("Streak", self.streak_var),
+            ("Odds", self.odds_var),
+        ]
+        for idx, (label, var) in enumerate(fields):
+            row = idx // 4
+            col = (idx % 4) * 2
+            ttk.Label(form, text=label).grid(row=row, column=col, sticky="w", padx=(0, 6), pady=(0, 6))
+            ttk.Entry(form, textvariable=var, width=10).grid(row=row, column=col + 1, sticky="ew", padx=(0, 12), pady=(0, 6))
 
         self.board_text = self._text_area(parent, "Board", height=4)
         self.bench_text = self._text_area(parent, "Banco", height=3)
@@ -497,6 +716,10 @@ class CoachApp:
         manual_stage = self.stage_var.get().strip()
         manual_level = _optional_int(self.level_var.get())
         manual_gold = _optional_int(self.gold_var.get())
+        manual_health = _optional_int(self.health_var.get())
+        manual_xp_current, manual_xp_needed = _parse_pair(self.xp_var.get())
+        manual_streak_count, manual_streak_type = _parse_streak(self.streak_var.get())
+        manual_odds = [_optional_int(part) for part in self.odds_var.get().replace("/", ",").split(",")]
         manual_board = _split_entries(self.board_text.get("1.0", "end"))
         manual_bench = _split_entries(self.bench_text.get("1.0", "end"))
         manual_shop = _split_entries(self.shop_text.get("1.0", "end"))
@@ -506,6 +729,12 @@ class CoachApp:
         base.stage = manual_stage or base.stage
         base.level = manual_level if manual_level is not None else base.level
         base.gold = manual_gold if manual_gold is not None else base.gold
+        base.health = manual_health if manual_health is not None else base.health
+        base.xp_current = manual_xp_current if manual_xp_current is not None else base.xp_current
+        base.xp_needed = manual_xp_needed if manual_xp_needed is not None else base.xp_needed
+        base.streak_count = manual_streak_count if manual_streak_count is not None else base.streak_count
+        base.streak_type = manual_streak_type or base.streak_type
+        base.shop_odds = [value for value in manual_odds if value is not None] or base.shop_odds
         base.board = manual_board or base.board
         base.bench = manual_bench or base.bench
         base.shop = manual_shop or base.shop
@@ -520,6 +749,15 @@ class CoachApp:
             self.level_var.set(str(state.level))
         if state.gold is not None and (force or not self.gold_var.get().strip()):
             self.gold_var.set(str(state.gold))
+        if state.health is not None and (force or not self.health_var.get().strip()):
+            self.health_var.set(str(state.health))
+        if state.xp_current is not None and state.xp_needed is not None and (force or not self.xp_var.get().strip()):
+            self.xp_var.set(f"{state.xp_current}/{state.xp_needed}")
+        if state.streak_count is not None and (force or not self.streak_var.get().strip()):
+            prefix = "W" if state.streak_type == "win" else "L" if state.streak_type == "loss" else "S"
+            self.streak_var.set(f"{prefix}{state.streak_count}")
+        if state.shop_odds and (force or not self.odds_var.get().strip()):
+            self.odds_var.set("/".join(str(value) for value in state.shop_odds[:5]))
         if state.shop and (force or not _split_entries(self.shop_text.get("1.0", "end"))):
             self.shop_text.delete("1.0", "end")
             self.shop_text.insert("1.0", ", ".join(state.shop))
@@ -587,6 +825,24 @@ def _optional_int(value: str) -> int | None:
         return None
 
 
+def _parse_pair(value: str) -> tuple[int | None, int | None]:
+    numbers = [_optional_int(part) for part in value.replace("/", ",").split(",")]
+    numbers = [number for number in numbers if number is not None]
+    if len(numbers) >= 2:
+        return numbers[0], numbers[1]
+    return None, None
+
+
+def _parse_streak(value: str) -> tuple[int | None, str]:
+    value = value.strip()
+    if not value:
+        return None, ""
+    lower = value.lower()
+    streak_type = "win" if lower.startswith("w") else "loss" if lower.startswith("l") else ""
+    count = _optional_int("".join(ch for ch in value if ch.isdigit()))
+    return count, streak_type
+
+
 def _comp_sort_key(comp: CompDefinition) -> tuple[int, str]:
     tier_rank = {"S": 0, "A": 1, "B": 2, "C": 3}.get(comp.tier.upper(), 4)
     return (tier_rank, comp.name)
@@ -599,6 +855,51 @@ def _difficulty_color(value: str) -> str:
     if "hard" in lower:
         return RED
     return GOLD
+
+
+def _rarity_color(cost: int | None) -> str:
+    return {
+        1: "#6b7280",
+        2: "#22c55e",
+        3: "#3b82f6",
+        4: "#a855f7",
+        5: GOLD,
+    }.get(cost or 0, "#454d61")
+
+
+def _default_leveling_guide(comp: CompDefinition) -> list[dict[str, str]]:
+    return [
+        {
+            "stage": "2-1",
+            "level": "4",
+            "gold": "5+",
+            "note": comp.leveling_plan.get("2", "Play strongest opener"),
+        },
+        {
+            "stage": "2-5",
+            "level": "5",
+            "gold": "10+",
+            "note": "Preserve streak and pairs",
+        },
+        {
+            "stage": "3-2",
+            "level": "6",
+            "gold": "30+",
+            "note": comp.leveling_plan.get("3", "Stabilize mid game"),
+        },
+        {
+            "stage": "4-2",
+            "level": "7/8",
+            "gold": "20+",
+            "note": comp.leveling_plan.get("4", "Roll if weak, level if stable"),
+        },
+        {
+            "stage": "5-1",
+            "level": "8",
+            "gold": "20+",
+            "note": "Finish core board",
+        },
+    ]
 
 
 def _short_name(value: str) -> str:

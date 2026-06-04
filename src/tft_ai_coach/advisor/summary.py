@@ -21,6 +21,7 @@ def compact_overlay_summary(state: GameState, recommendations: list[Recommendati
     lines = [
         f"TFT AI Coach | {current_stage_label}",
         f"Comp: {top.comp.name} ({top.comp.tier})",
+        f"Estado: {_state_context(state)}",
         f"Plano: {current_phase} - {', '.join(current_units[:5]) or '-'}",
         f"Loja: {shop_line}",
         economy_advice(state),
@@ -42,3 +43,21 @@ def compact_overlay_summary(state: GameState, recommendations: list[Recommendati
         lines.append(f"Late: {', '.join(top.comp.core_units[:5]) or '-'}")
 
     return "\n".join(lines[:10])
+
+
+def _state_context(state: GameState) -> str:
+    chunks: list[str] = []
+    if state.health is not None:
+        chunks.append(f"HP {state.health}")
+    if state.gold is not None:
+        chunks.append(f"{state.gold}g")
+    if state.level is not None:
+        chunks.append(f"Lv {state.level}")
+    if state.xp_current is not None and state.xp_needed is not None:
+        chunks.append(f"XP {state.xp_current}/{state.xp_needed}")
+    if state.streak_count is not None:
+        prefix = "W" if state.streak_type == "win" else "L" if state.streak_type == "loss" else "S"
+        chunks.append(f"{prefix}{state.streak_count}")
+    if state.shop_odds:
+        chunks.append("Odds " + "/".join(str(value) for value in state.shop_odds[:5]))
+    return " | ".join(chunks) if chunks else "lendo HUD"

@@ -390,6 +390,8 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
             parsed["status"] = line.split("|", 1)[1].strip() if "|" in line else "live"
         elif lower.startswith("comp:"):
             parsed["comp"] = _wrap(line, 52)
+        elif lower.startswith("estado:"):
+            parsed["reason"] = _wrap(line[7:].strip(), 72)
         elif lower.startswith("loja:"):
             parsed["shop"] = _format_shop(line[5:].strip())
         elif lower.startswith("plano:"):
@@ -405,7 +407,8 @@ def _parse_overlay_text(text: str) -> dict[str, str]:
         elif lower.startswith("agora:"):
             parsed["action"] = _wrap(line[6:].strip(), 56)
         elif lower.startswith("por que:"):
-            parsed["reason"] = _wrap(line, 72)
+            existing = parsed.get("reason", "")
+            parsed["reason"] = _wrap(f"{existing} | {line}" if existing else line, 72)
         elif lower.startswith("early:"):
             parsed["early"] = _wrap(line[6:].strip(), 30)
         elif lower.startswith("mid:"):

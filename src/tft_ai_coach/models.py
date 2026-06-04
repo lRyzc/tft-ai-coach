@@ -29,6 +29,11 @@ class GameState:
     level: int | None = None
     gold: int | None = None
     health: int | None = None
+    xp_current: int | None = None
+    xp_needed: int | None = None
+    streak_count: int | None = None
+    streak_type: str = ""
+    shop_odds: list[int] = field(default_factory=list)
     screen_context: str = "game"
     decision_text: str = ""
     decision_options: list[str] = field(default_factory=list)
@@ -62,8 +67,15 @@ class CompDefinition:
     alternative_units: list[str] = field(default_factory=list)
     carousel_priority: list[str] = field(default_factory=list)
     core_items: list[str] = field(default_factory=list)
+    item_builds: dict[str, list[str]] = field(default_factory=dict)
+    carry_order: list[str] = field(default_factory=list)
     item_tags: list[str] = field(default_factory=list)
     augment_keywords: list[str] = field(default_factory=list)
+    augment_tiers: dict[str, list[str]] = field(default_factory=dict)
+    synergies: list[str] = field(default_factory=list)
+    positioning: dict[str, tuple[int, int]] = field(default_factory=dict)
+    leveling_guide: list[dict[str, str]] = field(default_factory=list)
+    guide: str = ""
     economy_plan: str = ""
     leveling_plan: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)

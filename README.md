@@ -14,6 +14,7 @@ Personal TFT companion prototype for screen-based coaching, patch-aware data, an
 - Click-through decision aura that highlights recommended shop buys, augments, divinities, and reward cards in-place.
 - Local overlay settings saved under `data/runtime`.
 - Dark meta-comps dashboard with tier, difficulty, tempo, carry units, and champion icons.
+- Expanded comp guide with carry order, item builds, carousel priority, augment tiers, synergies, positioning, and leveling plan.
 - Target-comp lock from the meta dashboard, with an Auto comp button to return to automatic routing.
 - Stage-aware Early/Mid/Late plan summaries that change with the current round.
 - Early HUD OCR for stage, level, gold, and augment-choice screens.
