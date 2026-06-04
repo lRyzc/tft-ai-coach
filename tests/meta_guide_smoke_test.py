@@ -6,6 +6,7 @@ def main() -> None:
     groovians = next(comp for comp in comps if comp.id == "groovians")
     assert groovians.carry_order[:3] == ["Samira", "Ornn", "Nami"]
     assert groovians.item_builds["Samira"] == ["Infinity Edge", "Last Whisper", "Guinsoo's Rageblade"]
+    assert groovians.star_targets["Samira"] == 3
     assert groovians.positioning["Ornn"] == (3, 4)
     assert groovians.leveling_guide[0]["stage"] == "2-1"
     assert groovians.synergies

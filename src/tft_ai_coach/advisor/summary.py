@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tft_ai_coach.advisor.choices import choice_summary
-from tft_ai_coach.advisor.economy import economy_advice
+from tft_ai_coach.advisor.economy import economy_advice, economy_alert
 from tft_ai_coach.advisor.phase import phase_name, phase_plan, phase_units, stage_label
 from tft_ai_coach.models import GameState, Recommendation
 
@@ -20,6 +20,7 @@ def compact_overlay_summary(state: GameState, recommendations: list[Recommendati
 
     lines = [
         f"TFT AI Coach | {current_stage_label}",
+        economy_alert(state),
         f"Comp: {top.comp.name} ({top.comp.tier})",
         f"Estado: {_state_context(state)}",
         f"Plano: {current_phase} - {', '.join(current_units[:5]) or '-'}",
@@ -40,7 +41,7 @@ def compact_overlay_summary(state: GameState, recommendations: list[Recommendati
     if top.comp.early_units or top.comp.mid_units or top.comp.core_units:
         lines.append(f"Early: {', '.join(top.comp.early_units[:4]) or '-'}")
         lines.append(f"Mid: {', '.join(top.comp.mid_units[:4]) or '-'}")
-        lines.append(f"Late: {', '.join(top.comp.core_units[:5]) or '-'}")
+        lines.append(f"Late: {', '.join(top.comp.core_units[:6]) or '-'}")
 
     return "\n".join(lines[:10])
 

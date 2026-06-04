@@ -53,6 +53,7 @@ def load_comps() -> list[CompDefinition]:
                 core_items=core_items,
                 item_builds=_item_builds(raw, carry_units, core_items),
                 carry_order=list(raw.get("carry_order", carry_units)),
+                star_targets={name: int(value) for name, value in raw.get("star_targets", {}).items()},
                 item_tags=list(raw.get("item_tags", [])),
                 augment_keywords=list(raw.get("augment_keywords", [])),
                 augment_tiers={key: list(value) for key, value in raw.get("augment_tiers", {}).items()},

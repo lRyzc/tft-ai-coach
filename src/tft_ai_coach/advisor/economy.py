@@ -3,6 +3,32 @@ from __future__ import annotations
 from tft_ai_coach.models import GameState
 
 
+def economy_alert(state: GameState) -> str:
+    stage = _stage_number(state.stage)
+    gold = state.gold
+    level = state.level
+    health = state.health
+    streak = state.streak_count or 0
+
+    if health is not None and health <= 30 and stage >= 4:
+        return "ALERTA: role agora para estabilizar"
+    if _can_buy_level(state) and gold is not None and gold >= 20 and stage in {2, 3, 4}:
+        return "ALERTA: upar nivel e manter tempo"
+    if stage <= 2 and gold is not None and gold >= 20 and streak < 3:
+        return "ALERTA: segurar juros"
+    if stage == 3 and level is not None and level < 6 and gold is not None and gold >= 24:
+        return "ALERTA: preparar level 6"
+    if stage == 4 and level is not None and level < 8 and gold is not None and gold >= 40:
+        return "ALERTA: subir 8 antes do rolldown"
+    if stage >= 4 and gold is not None and gold <= 20:
+        return "ALERTA: roll curto por upgrade"
+    if streak >= 3 and state.streak_type == "win":
+        return "ALERTA: preservar winstreak"
+    if streak >= 3 and state.streak_type == "loss":
+        return "ALERTA: loss streak controlada, nao quebrar econ"
+    return "ALERTA: jogar board forte"
+
+
 def economy_advice(state: GameState) -> str:
     stage = _stage_number(state.stage)
     gold = state.gold

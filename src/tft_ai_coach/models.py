@@ -69,6 +69,7 @@ class CompDefinition:
     core_items: list[str] = field(default_factory=list)
     item_builds: dict[str, list[str]] = field(default_factory=dict)
     carry_order: list[str] = field(default_factory=list)
+    star_targets: dict[str, int] = field(default_factory=dict)
     item_tags: list[str] = field(default_factory=list)
     augment_keywords: list[str] = field(default_factory=list)
     augment_tiers: dict[str, list[str]] = field(default_factory=dict)

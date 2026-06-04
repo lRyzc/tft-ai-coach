@@ -18,6 +18,7 @@
       "carousel_priority": ["Tear of the Goddess", "Needlessly Large Rod", "Recurve Bow"],
       "core_items": ["Spear of Shojin", "Guinsoo's Rageblade", "Jeweled Gauntlet"],
       "carry_order": ["Samira", "Ornn", "Nami"],
+      "star_targets": { "Samira": 3, "Ornn": 3, "Nami": 3 },
       "item_builds": {
         "Samira": ["Infinity Edge", "Last Whisper", "Guinsoo's Rageblade"],
         "Ornn": ["Warmog's Armor", "Bramble Vest", "Dragon's Claw"],
@@ -98,6 +99,7 @@
       "alternative_units": ["Samira", "Nasus", "Teemo"],
       "carousel_priority": ["Tear of the Goddess", "Needlessly Large Rod", "Chain Vest"],
       "core_items": ["Spear of Shojin", "Nashor's Tooth", "Warmog's Armor"],
+      "star_targets": { "Nami": 2, "Riven": 2, "Gwen": 2 },
       "item_tags": ["ap", "mana", "frontline", "items"],
       "augment_keywords": ["items", "scaling", "frontline", "utility"],
       "economy_plan": "Stabilize mid game, then cap with Ornn/Gwen/Pantheon style upgrades.",

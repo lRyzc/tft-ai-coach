@@ -233,8 +233,15 @@ class CoachApp:
 
         units = tk.Frame(card, bg=CARD_BG, padx=6, pady=10)
         units.pack(side="left", fill="x", expand=True)
-        for unit in (comp.carry_units + [name for name in comp.core_units if name not in comp.carry_units])[:9]:
-            self._unit_avatar(units, unit, carry=unit in comp.carry_units).pack(side="left", padx=5)
+        for unit in self._display_units(comp)[:9]:
+            self._unit_avatar(
+                units,
+                unit,
+                carry=unit in comp.carry_units,
+                stars=_star_target(comp, unit, self._champion_cost(unit)),
+                item_names=comp.item_builds.get(unit, [])[:3],
+                compact_items=True,
+            ).pack(side="left", padx=5)
 
         right = tk.Frame(card, bg=CARD_SOFT, width=104)
         right.pack(side="right", fill="y")
@@ -275,16 +282,44 @@ class CoachApp:
     def _badge(self, parent: tk.Widget, text: str, fg: str, bg: str) -> tk.Label:
         return tk.Label(parent, text=text, bg=bg, fg=fg, padx=7, pady=2, font=("Segoe UI", 8, "bold"))
 
-    def _unit_avatar(self, parent: tk.Widget, name: str, carry: bool = False) -> tk.Frame:
+    def _unit_avatar(
+        self,
+        parent: tk.Widget,
+        name: str,
+        carry: bool = False,
+        stars: int = 0,
+        item_names: list[str] | None = None,
+        compact_items: bool = False,
+    ) -> tk.Frame:
         box = tk.Frame(parent, bg=CARD_BG)
         photo = self._champion_photo(name, 46)
         border = GOLD if carry else _rarity_color(self._champion_cost(name))
+        if stars:
+            tk.Label(
+                box,
+                text="★" * min(stars, 3),
+                bg=CARD_BG,
+                fg=GOLD,
+                font=("Segoe UI", 8, "bold"),
+                height=1,
+            ).pack()
+        else:
+            tk.Label(box, text="", bg=CARD_BG, font=("Segoe UI", 8), height=1).pack()
         icon_frame = tk.Frame(box, bg=border, padx=2, pady=2)
         icon_frame.pack()
         if photo is not None:
             tk.Label(icon_frame, image=photo, bg=border).pack()
         else:
             tk.Label(icon_frame, text=name[:2].upper(), bg="#111827", fg=TEXT, width=6, height=3).pack()
+        if compact_items:
+            items = tk.Frame(box, bg=CARD_BG, height=13)
+            items.pack(pady=(2, 0))
+            for item in (item_names or [])[:3]:
+                photo_item = self._item_photo(item, 12)
+                if photo_item is not None:
+                    tk.Label(items, image=photo_item, bg=CARD_BG).pack(side="left", padx=1)
+                else:
+                    tk.Label(items, text="", bg="#111827", width=1, height=1).pack(side="left", padx=1)
         label = _short_name(name)
         tk.Label(box, text=label, bg=CARD_BG, fg=TEXT, font=("Segoe UI", 8), width=9).pack(pady=(4, 0))
         return box
@@ -313,7 +348,7 @@ class CoachApp:
         return self._image_cache[key]
 
     def _champion_record(self, champion_name: str) -> dict | None:
-        target = _norm_name(champion_name)
+        target = _norm_name(_champion_alias(champion_name))
         for record in self.index.get("records", {}).get("champions", []):
             if _norm_name(record["name"]) == target:
                 return record
@@ -355,6 +390,17 @@ class CoachApp:
         self.selected_guide = guide
         self.selected_guide_comp_id = comp.id
         self._build_comp_guide(guide, comp)
+
+    def _display_units(self, comp: CompDefinition) -> list[str]:
+        units = list(dict.fromkeys(comp.core_units + comp.carry_units))
+        return sorted(
+            units,
+            key=lambda unit: (
+                -(self._champion_cost(unit) or 0),
+                0 if unit in comp.carry_units else 1,
+                comp.core_units.index(unit) if unit in comp.core_units else 99,
+            ),
+        )
 
     def _build_comp_guide(self, guide: tk.Frame, comp: CompDefinition) -> None:
         shell = tk.Frame(guide, bg="#111326", padx=20, pady=16)
@@ -416,7 +462,12 @@ class CoachApp:
         for carry in comp.carry_order or comp.carry_units:
             carry_row = tk.Frame(left, bg="#111326")
             carry_row.pack(anchor="w", pady=(0, 8))
-            self._unit_avatar(carry_row, carry, carry=True).pack(side="left")
+            self._unit_avatar(
+                carry_row,
+                carry,
+                carry=True,
+                stars=_star_target(comp, carry, self._champion_cost(carry)),
+            ).pack(side="left")
             tk.Label(carry_row, text=">", bg="#111326", fg=MUTED, padx=6, font=("Segoe UI", 10, "bold")).pack(side="left")
             for item in comp.item_builds.get(carry, comp.core_items[:3]):
                 self._item_icon(carry_row, item, size=26).pack(side="left", padx=(0, 5))
@@ -495,7 +546,13 @@ class CoachApp:
                     if photo is not None:
                         canvas.create_image(x + 22, y + 17, image=photo)
                     if unit in comp.carry_order or unit in comp.carry_units:
-                        canvas.create_text(x + 22, y - 4, text="***", fill=GOLD, font=("Segoe UI", 8, "bold"))
+                        canvas.create_text(
+                            x + 22,
+                            y - 4,
+                            text="★" * _star_target(comp, unit, self._champion_cost(unit)),
+                            fill=GOLD,
+                            font=("Segoe UI", 8, "bold"),
+                        )
 
     def _focus_comp(self, comp: CompDefinition) -> None:
         self.focused_comp_id = comp.id
@@ -867,6 +924,16 @@ def _rarity_color(cost: int | None) -> str:
     }.get(cost or 0, "#454d61")
 
 
+def _star_target(comp: CompDefinition, unit: str, cost: int | None) -> int:
+    if unit in comp.star_targets:
+        return max(0, min(3, comp.star_targets[unit]))
+    if unit not in comp.carry_units and unit not in comp.carry_order:
+        return 0
+    if "slow" in comp.tempo.lower() or "reroll" in comp.style.lower():
+        return 3 if (cost or 0) <= 3 else 2
+    return 2
+
+
 def _default_leveling_guide(comp: CompDefinition) -> list[dict[str, str]]:
     return [
         {
@@ -910,6 +977,7 @@ def _short_name(value: str) -> str:
         "Blitzcrank": "Blitz",
         "Mordekaiser": "Morde",
         "Rammus": "Ramm.",
+        "Nunu & Willump": "Nunu",
     }
     if value in aliases:
         return aliases[value]
@@ -920,6 +988,14 @@ def _short_name(value: str) -> str:
 
 def _norm_name(value: str) -> str:
     return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _champion_alias(value: str) -> str:
+    aliases = {
+        "Nunu": "Nunu & Willump",
+        "Mech": "The Mighty Mech",
+    }
+    return aliases.get(value, value)
 
 
 def main() -> None:
