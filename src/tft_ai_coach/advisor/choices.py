@@ -39,34 +39,32 @@ def choice_summary(state: GameState, recommendations: list[Recommendation]) -> s
 
 
 def best_decision_option(state: GameState, recommendations: list[Recommendation]) -> tuple[DecisionOption | None, str]:
-    if not state.decision_slots:
+    ranked = ranked_decision_options(state, recommendations, limit=1)
+    if not ranked:
         return None, choice_summary(state, recommendations)
+    return ranked[0]
+
+
+def ranked_decision_options(
+    state: GameState,
+    recommendations: list[Recommendation],
+    limit: int = 3,
+) -> list[tuple[DecisionOption, str]]:
+    if not state.decision_slots:
+        return []
     comp = recommendations[0].comp if recommendations else None
-    ranked = sorted(state.decision_slots, key=lambda option: _score_option(option, comp), reverse=True)
-    best = ranked[0]
-    runner_up = ranked[1].name if len(ranked) > 1 else ""
-    if best.kind == "divinity":
-        tier, _tags, reason = DIVINITY_NOTES.get(best.name, ("B", [], "melhor encaixe geral agora"))
-        label = f"{best.name} ({tier})"
-        if runner_up:
-            label += f" > {runner_up}"
-        return best, f"{label}: {reason}"
-    if best.kind == "augment":
-        tier, tags, reason = _augment_note(best.name)
-        tag_line = f" [{', '.join(tags[:2])}]" if tags else ""
-        label = f"{best.name} ({tier}){tag_line}"
-        if runner_up:
-            label += f" > {runner_up}"
-        return best, f"{label}: {reason}"
-    if best.kind == "reward":
-        reason = _reward_reason(best, comp)
-        label = best.name
-        if best.item:
-            label += f" + {best.item}"
-        if runner_up:
-            label += f" > {runner_up}"
-        return best, f"{label}: {reason}"
-    return best, best.name
+    scored = [(option, _score_option(option, comp)) for option in state.decision_slots]
+    scored = [(option, score) for option, score in scored if score >= _minimum_score(option)]
+    scored.sort(key=lambda item: item[1], reverse=True)
+    if not scored:
+        return []
+    if scored[0][0].kind != "shop":
+        scored = scored[:1]
+    output: list[tuple[DecisionOption, str]] = []
+    for index, (option, _score) in enumerate(scored[:limit]):
+        runner_up = scored[index + 1][0].name if index == 0 and len(scored) > 1 else ""
+        output.append((option, _option_reason(option, comp, runner_up)))
+    return output
 
 
 def divinity_summary(state: GameState, recommendations: list[Recommendation]) -> str:
@@ -135,6 +133,8 @@ def _score_augment(name: str, comp: CompDefinition | None) -> float:
 
 
 def _score_option(option: DecisionOption, comp: CompDefinition | None) -> float:
+    if option.kind == "shop":
+        return _score_shop(option, comp) + option.confidence
     if option.kind == "divinity":
         return _score_divinity(option.name, comp) + option.confidence
     if option.kind == "augment":
@@ -142,6 +142,74 @@ def _score_option(option: DecisionOption, comp: CompDefinition | None) -> float:
     if option.kind == "reward":
         return _score_reward(option, comp) + option.confidence
     return option.confidence
+
+
+def _minimum_score(option: DecisionOption) -> float:
+    if option.kind == "shop":
+        return 14.0
+    return 0.01
+
+
+def _option_reason(option: DecisionOption, comp: CompDefinition | None, runner_up: str = "") -> str:
+    if option.kind == "shop":
+        return _shop_reason(option, comp)
+    if option.kind == "divinity":
+        tier, _tags, reason = DIVINITY_NOTES.get(option.name, ("B", [], "melhor encaixe geral agora"))
+        label = f"{option.name} ({tier})"
+        if runner_up:
+            label += f" > {runner_up}"
+        return f"{label}: {reason}"
+    if option.kind == "augment":
+        tier, tags, reason = _augment_note(option.name)
+        tag_line = f" [{', '.join(tags[:2])}]" if tags else ""
+        label = f"{option.name} ({tier}){tag_line}"
+        if runner_up:
+            label += f" > {runner_up}"
+        return f"{label}: {reason}"
+    if option.kind == "reward":
+        reason = _reward_reason(option, comp)
+        label = option.name
+        if option.item:
+            label += f" + {option.item}"
+        if runner_up:
+            label += f" > {runner_up}"
+        return f"{label}: {reason}"
+    return option.name
+
+
+def _score_shop(option: DecisionOption, comp: CompDefinition | None) -> float:
+    if comp is None:
+        return 0.0
+    normalized = _norm(option.name)
+    score = 0.0
+    if normalized in {_norm(unit) for unit in comp.carry_units}:
+        score += 32
+    if normalized in {_norm(unit) for unit in comp.core_units}:
+        score += 24
+    if normalized in {_norm(unit) for unit in comp.mid_units}:
+        score += 16
+    if normalized in {_norm(unit) for unit in comp.early_units}:
+        score += 12
+    if normalized in {_norm(unit) for unit in comp.alternative_units}:
+        score += 8
+    return score
+
+
+def _shop_reason(option: DecisionOption, comp: CompDefinition | None) -> str:
+    if comp is None:
+        return f"{option.name}: comprar se for upgrade ou par"
+    normalized = _norm(option.name)
+    if normalized in {_norm(unit) for unit in comp.carry_units}:
+        return f"{option.name}: comprar, carry chave da {comp.name}"
+    if normalized in {_norm(unit) for unit in comp.core_units}:
+        return f"{option.name}: comprar, entra na comp {comp.name}"
+    if normalized in {_norm(unit) for unit in comp.mid_units}:
+        return f"{option.name}: comprar, estabiliza o mid game"
+    if normalized in {_norm(unit) for unit in comp.early_units}:
+        return f"{option.name}: comprar/segurar, bom early da linha"
+    if normalized in {_norm(unit) for unit in comp.alternative_units}:
+        return f"{option.name}: segurar como alternativa"
+    return f"{option.name}: comprar apenas se fizer par"
 
 
 def _score_reward(option: DecisionOption, comp: CompDefinition | None) -> float:

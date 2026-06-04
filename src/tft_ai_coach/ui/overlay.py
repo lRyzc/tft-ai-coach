@@ -4,7 +4,7 @@ import ctypes
 import textwrap
 import tkinter as tk
 
-from tft_ai_coach.advisor.choices import best_decision_option
+from tft_ai_coach.advisor.choices import ranked_decision_options
 from tft_ai_coach.models import DecisionOption, GameState, Recommendation
 from tft_ai_coach.ui.settings import load_overlay_settings, save_overlay_settings
 
@@ -260,12 +260,12 @@ class CoachOverlay:
         if not self.settings.show_choice_aura or game_rect is None:
             self.hide_guides()
             return
-        option, reason = best_decision_option(state, recommendations)
-        if option is None:
+        options = ranked_decision_options(state, recommendations, limit=3)
+        if not options:
             self.hide_guides()
             return
         self._show_guide_window(game_rect)
-        self._draw_choice_aura(option, reason, game_rect)
+        self._draw_choice_auras(options, game_rect)
 
     def _show_guide_window(self, game_rect: tuple[int, int, int, int]) -> None:
         left, top, right, bottom = game_rect
@@ -292,10 +292,9 @@ class CoachOverlay:
         self.guide_window.lift()
         _make_clickthrough(self.guide_window)
 
-    def _draw_choice_aura(
+    def _draw_choice_auras(
         self,
-        option: DecisionOption,
-        reason: str,
+        options: list[tuple[DecisionOption, str]],
         game_rect: tuple[int, int, int, int],
     ) -> None:
         if self.guide_canvas is None:
@@ -305,6 +304,19 @@ class CoachOverlay:
         height = max(1, bottom - top)
         self.guide_canvas.configure(width=width, height=height)
         self.guide_canvas.delete("all")
+        for index, (option, reason) in enumerate(options):
+            self._draw_single_aura(option, reason, width, height, show_label=index == 0)
+
+    def _draw_single_aura(
+        self,
+        option: DecisionOption,
+        reason: str,
+        width: int,
+        height: int,
+        show_label: bool,
+    ) -> None:
+        if self.guide_canvas is None:
+            return
         x, y, w, h = _scale_region(option.region, width, height)
         x = max(2, x)
         y = max(2, y)
@@ -312,18 +324,30 @@ class CoachOverlay:
         h = min(h, height - y - 2)
         title = _guide_title(option)
         detail = _short_reason(reason)
-        accent = BRIGHT_GOLD if option.kind != "augment" else BRIGHT_TEAL
+        accent = _accent_for(option)
 
         for offset, color, stroke in [(10, "#7b5a19", 2), (6, accent, 3), (1, "#fff1a8", 2)]:
-            self.guide_canvas.create_rectangle(
-                x - offset,
-                y - offset,
-                x + w + offset,
-                y + h + offset,
-                outline=color,
-                width=stroke,
-            )
+            if option.kind == "shop":
+                self.guide_canvas.create_oval(
+                    x - offset,
+                    y - offset,
+                    x + w + offset,
+                    y + h + offset,
+                    outline=color,
+                    width=stroke,
+                )
+            else:
+                self.guide_canvas.create_rectangle(
+                    x - offset,
+                    y - offset,
+                    x + w + offset,
+                    y + h + offset,
+                    outline=color,
+                    width=stroke,
+                )
         self.guide_canvas.create_line(x, y - 18, x + w, y - 18, fill=accent, width=3)
+        if not show_label:
+            return
 
         label_x = x + w / 2
         label_y = max(24, y - 48)
@@ -432,6 +456,8 @@ def _scale_region(region: tuple[float, float, float, float], width: int, height:
 
 
 def _guide_title(option: DecisionOption) -> str:
+    if option.kind == "shop":
+        return f"COMPRAR: {option.name}"
     if option.kind == "divinity":
         return f"MELHOR DIVINDADE: {option.name}"
     if option.kind == "augment":
@@ -439,6 +465,12 @@ def _guide_title(option: DecisionOption) -> str:
     if option.kind == "reward":
         return f"MELHOR ESCOLHA: {option.name}"
     return f"MELHOR: {option.name}"
+
+
+def _accent_for(option: DecisionOption) -> str:
+    if option.kind in {"augment", "shop"}:
+        return BRIGHT_TEAL
+    return BRIGHT_GOLD
 
 
 def _short_reason(reason: str) -> str:

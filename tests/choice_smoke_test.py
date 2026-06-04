@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from tft_ai_coach.advisor import CoachEngine, compact_overlay_summary
-from tft_ai_coach.advisor.choices import best_decision_option
+from tft_ai_coach.advisor.choices import best_decision_option, ranked_decision_options
 from tft_ai_coach.data.meta import load_comps
 from tft_ai_coach.models import DecisionOption, GameState
 
@@ -41,6 +41,24 @@ def main() -> None:
     assert option is not None
     assert option.region[2] > 0
     assert reason
+
+    shop_state = GameState(
+        stage="2-5",
+        level=5,
+        gold=26,
+        shop=["Briar", "Leona", "Gnar", "Maokai", "Gnar"],
+        decision_slots=[
+            DecisionOption(1, "Briar", "shop", (0.250, 0.908, 0.103, 0.083)),
+            DecisionOption(2, "Leona", "shop", (0.354, 0.908, 0.103, 0.083)),
+            DecisionOption(3, "Gnar", "shop", (0.458, 0.908, 0.103, 0.083)),
+            DecisionOption(4, "Maokai", "shop", (0.562, 0.908, 0.103, 0.083)),
+            DecisionOption(5, "Gnar", "shop", (0.666, 0.908, 0.103, 0.083)),
+        ],
+    )
+    shop_recs = engine.recommend(shop_state)
+    shop_targets = ranked_decision_options(shop_state, shop_recs)
+    assert shop_targets
+    assert shop_targets[0][0].name == "Maokai", shop_targets
     print("choice smoke ok")
 
 

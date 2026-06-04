@@ -112,6 +112,16 @@ class VisionPipeline:
             )
             if detected_name and accepted:
                 detected_shop.append(detected_name)
+                state.decision_slots.append(
+                    DecisionOption(
+                        slot=slot_index,
+                        name=detected_name,
+                        kind="shop",
+                        region=_region_tuple(self.layout.regions[f"shop_slot_{slot_index}"]),
+                        confidence=confidence,
+                        source=source,
+                    )
+                )
                 state.detections.append(
                     DetectedEntity(
                         name=detected_name,
@@ -151,7 +161,7 @@ class VisionPipeline:
         normalized = _fold(f"{banner} {reward_banner}")
         context = "game"
         options: list[str] = []
-        slots: list[DecisionOption] = []
+        slots: list[DecisionOption] = list(state.decision_slots)
         champion_names = [template.name for template in self._champion_matcher().templates]
         if "divindade" in normalized or "oferece" in normalized:
             context = "divinity_choice"
