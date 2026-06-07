@@ -678,10 +678,13 @@ class CoachApp:
         if not title:
             messagebox.showwarning("Sem janela", "Escolha a janela do TFT primeiro.")
             return
+        if self.overlay.choice_aura_enabled():
+            self.overlay.set_choice_aura_enabled(False)
+            self.aura_button.configure(text=self._aura_button_text())
         self.live_running = True
         self.live_button.configure(text="Parar Live Coach")
         self.overlay.show()
-        self.status_var.set("Live Coach ligado. O overlay sera atualizado automaticamente.")
+        self.status_var.set("Live Coach ligado em modo seguro. Aura desligada para evitar tela preta.")
         self._live_tick()
 
     def stop_live(self) -> None:

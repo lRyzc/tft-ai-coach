@@ -12,7 +12,7 @@ class OverlaySettings:
     compact_y: int | None = None
     compact_scale: float = 1.0
     show_compact_panel: bool = True
-    show_choice_aura: bool = True
+    show_choice_aura: bool = False
 
 
 def load_overlay_settings() -> OverlaySettings:
@@ -29,7 +29,7 @@ def load_overlay_settings() -> OverlaySettings:
         compact_y=_optional_int(payload.get("compact_y")),
         compact_scale=float(payload.get("compact_scale", 1.0) or 1.0),
         show_compact_panel=bool(payload.get("show_compact_panel", True)),
-        show_choice_aura=bool(payload.get("show_choice_aura", True)),
+        show_choice_aura=bool(payload.get("show_choice_aura", False)),
     )
 
 
