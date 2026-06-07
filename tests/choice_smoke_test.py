@@ -57,8 +57,20 @@ def main() -> None:
     )
     shop_recs = engine.recommend(shop_state)
     shop_targets = ranked_decision_options(shop_state, shop_recs)
-    assert shop_targets
-    assert shop_targets[0][0].name == "Maokai", shop_targets
+    assert not shop_targets
+
+    focused_shop_state = GameState(
+        stage="2-5",
+        level=5,
+        gold=26,
+        board=["Miss Fortune"],
+        shop=["Briar", "Leona", "Gnar", "Maokai", "Gnar"],
+        decision_slots=shop_state.decision_slots,
+    )
+    focused_shop_recs = engine.recommend(focused_shop_state)
+    focused_shop_targets = ranked_decision_options(focused_shop_state, focused_shop_recs)
+    assert focused_shop_targets
+    assert focused_shop_targets[0][0].name == "Maokai", focused_shop_targets
     print("choice smoke ok")
 
 

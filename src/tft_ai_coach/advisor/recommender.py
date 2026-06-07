@@ -26,6 +26,7 @@ class CoachEngine:
         shop = _normalized_counter(state.shop)
         items = [item.lower() for item in state.items]
         augments = [augment.lower() for augment in state.augments]
+        has_build_signal = bool(owned or items or augments)
 
         owned_hits = _matches(comp.core_units, owned)
         if owned_hits:
@@ -35,8 +36,11 @@ class CoachEngine:
 
         shop_hits = _matches(comp.core_units, shop)
         if shop_hits:
-            score += 8 * len(shop_hits)
+            shop_weight = 8 if has_build_signal else 0
+            score += shop_weight * len(shop_hits)
             actions.append(f"Comprar/segurar da loja: {', '.join(shop_hits)}.")
+            if not has_build_signal:
+                reasons.append("Loja lida sem board confiavel; nao vou pivotar so por essas pecas.")
 
         carry_hits = _matches(comp.carry_units, owned)
         if carry_hits:
