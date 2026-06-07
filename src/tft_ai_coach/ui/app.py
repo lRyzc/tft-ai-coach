@@ -317,14 +317,24 @@ class CoachApp:
         else:
             tk.Label(icon_frame, text=name[:2].upper(), bg="#111827", fg=TEXT, width=6, height=3).pack()
         if compact_items:
-            items = tk.Frame(box, bg=CARD_BG, height=13)
+            items = tk.Frame(box, bg=CARD_BG, height=20)
             items.pack(pady=(2, 0))
             for item in (item_names or [])[:3]:
-                photo_item = self._item_photo(item, 12)
+                photo_item = self._item_photo(item, 17)
+                item_shell = tk.Frame(items, bg="#0f1320", highlightbackground=GOLD, highlightthickness=1)
+                item_shell.pack(side="left", padx=1)
                 if photo_item is not None:
-                    tk.Label(items, image=photo_item, bg=CARD_BG).pack(side="left", padx=1)
+                    tk.Label(item_shell, image=photo_item, bg="#0f1320").pack()
                 else:
-                    tk.Label(items, text="", bg="#111827", width=1, height=1).pack(side="left", padx=1)
+                    tk.Label(
+                        item_shell,
+                        text=_item_abbrev(item),
+                        bg="#111827",
+                        fg=TEXT,
+                        width=2,
+                        height=1,
+                        font=("Segoe UI", 6, "bold"),
+                    ).pack()
         label = _short_name(name)
         tk.Label(box, text=label, bg=CARD_BG, fg=TEXT, font=("Segoe UI", 8), width=9).pack(pady=(4, 0))
         return box
@@ -1080,6 +1090,29 @@ def _short_name(value: str) -> str:
     if len(value) <= 8:
         return value
     return value[:7] + "."
+
+
+def _item_abbrev(value: str) -> str:
+    aliases = {
+        "Infinity Edge": "IE",
+        "Last Whisper": "LW",
+        "Guinsoo's Rageblade": "GR",
+        "Spear of Shojin": "SH",
+        "Jeweled Gauntlet": "JG",
+        "Blue Buff": "BB",
+        "Bloodthirster": "BT",
+        "Warmog's Armor": "WA",
+        "Dragon's Claw": "DC",
+        "Bramble Vest": "BV",
+        "Statikk Shiv": "SS",
+        "Nashor's Tooth": "NT",
+    }
+    if value in aliases:
+        return aliases[value]
+    words = [word for word in value.replace("'", "").split() if word]
+    if len(words) >= 2:
+        return "".join(word[0] for word in words[:2]).upper()
+    return value[:2].upper()
 
 
 def _norm_name(value: str) -> str:
