@@ -52,6 +52,11 @@ class CoachApp:
         self._image_cache: dict[str, ImageTk.PhotoImage] = {}
         self.last_capture_rect: tuple[int, int, int, int] | None = None
         self.focused_comp_id: str | None = None
+        self.stable_comp_id: str | None = None
+        self.pending_comp_id: str | None = None
+        self.pending_comp_hits = 0
+        self.pending_health: int | None = None
+        self.pending_health_hits = 0
         self.selected_guide: tk.Frame | None = None
         self.selected_guide_comp_id: str | None = None
 
@@ -701,6 +706,7 @@ class CoachApp:
             return
         try:
             state, debug_payload = self._capture_and_analyze(hide_root=False, save_debug=False)
+            state = self._stabilize_live_state(state)
             self._populate_empty_fields(state, force=True)
             self.last_state = self._merge_manual_state(state)
             recommendations = self._recommend(self.last_state)
@@ -750,6 +756,10 @@ class CoachApp:
             )
         return state, debug_payload
 
+    def _stabilize_live_state(self, state: GameState) -> GameState:
+        state.health = self._stable_health(state.health, state.stage)
+        return state
+
     def recommend_from_form(self) -> None:
         self.last_state = self._merge_manual_state(GameState())
         self._render_recommendations(self._recommend(self.last_state))
@@ -770,6 +780,9 @@ class CoachApp:
 
     def clear_focused_comp(self) -> None:
         self.focused_comp_id = None
+        self.stable_comp_id = None
+        self.pending_comp_id = None
+        self.pending_comp_hits = 0
         self.status_var.set("Comp alvo liberada. O coach voltou para modo automatico.")
 
     def _merge_manual_state(self, base: GameState) -> GameState:
@@ -846,7 +859,7 @@ class CoachApp:
     def _recommend(self, state: GameState) -> list[Recommendation]:
         recommendations = self.engine.recommend(state, limit=max(3, len(self.comps)))
         if not self.focused_comp_id:
-            return recommendations[:3]
+            return self._stable_recommendations(recommendations)[:3]
         focused_index = next(
             (index for index, rec in enumerate(recommendations) if rec.comp.id == self.focused_comp_id),
             None,
@@ -857,6 +870,79 @@ class CoachApp:
         if "Comp fixada manualmente como plano alvo." not in focused.reasons:
             focused.reasons.insert(0, "Comp fixada manualmente como plano alvo.")
         return [focused] + recommendations[:2]
+
+    def _stable_recommendations(self, recommendations: list[Recommendation]) -> list[Recommendation]:
+        if not recommendations:
+            return []
+        leader = recommendations[0]
+        if self.stable_comp_id is None:
+            self.stable_comp_id = leader.comp.id
+            return recommendations
+        stable_index = next(
+            (index for index, rec in enumerate(recommendations) if rec.comp.id == self.stable_comp_id),
+            None,
+        )
+        if stable_index is None:
+            self.stable_comp_id = leader.comp.id
+            self.pending_comp_id = None
+            self.pending_comp_hits = 0
+            return recommendations
+        if leader.comp.id == self.stable_comp_id:
+            self.pending_comp_id = None
+            self.pending_comp_hits = 0
+            return recommendations
+
+        stable = recommendations[stable_index]
+        score_gap = leader.score - stable.score
+        if self.pending_comp_id == leader.comp.id:
+            self.pending_comp_hits += 1
+        else:
+            self.pending_comp_id = leader.comp.id
+            self.pending_comp_hits = 1
+
+        should_switch = score_gap >= 14 or self.pending_comp_hits >= 3
+        if should_switch:
+            self.stable_comp_id = leader.comp.id
+            self.pending_comp_id = None
+            self.pending_comp_hits = 0
+            leader.reasons.insert(0, "Plano trocado apos sinal consistente da leitura ao vivo.")
+            return recommendations
+
+        stable = recommendations.pop(stable_index)
+        stable.reasons.insert(0, f"Plano mantido para evitar troca instavel; nova leitura sugere {leader.comp.name}.")
+        return [stable] + recommendations
+
+    def _stable_health(self, health: int | None, stage: str) -> int | None:
+        previous = self.last_state.health
+        if health is None:
+            return previous
+        if previous is None:
+            if health <= 10 and _stage_number(stage) <= 4:
+                return None
+            if self.pending_health == health:
+                self.pending_health_hits += 1
+            else:
+                self.pending_health = health
+                self.pending_health_hits = 1
+            if self.pending_health_hits < 2:
+                return None
+            self.pending_health = None
+            self.pending_health_hits = 0
+            return health
+        if health > previous:
+            return previous if health - previous > 8 else health
+        if previous - health <= 18:
+            self.pending_health = None
+            self.pending_health_hits = 0
+            return health
+        if self.pending_health == health:
+            self.pending_health_hits += 1
+        else:
+            self.pending_health = health
+            self.pending_health_hits = 1
+        if self.pending_health_hits >= 3:
+            return health
+        return previous
 
     def _overlay_text(self) -> str:
         text = self.recommendation_text.get("1.0", "end").strip()
@@ -901,6 +987,13 @@ def _parse_streak(value: str) -> tuple[int | None, str]:
     streak_type = "win" if lower.startswith("w") else "loss" if lower.startswith("l") else ""
     count = _optional_int("".join(ch for ch in value if ch.isdigit()))
     return count, streak_type
+
+
+def _stage_number(stage: str) -> int:
+    try:
+        return int(stage.split("-", 1)[0])
+    except Exception:
+        return 0
 
 
 def _comp_sort_key(comp: CompDefinition) -> tuple[int, str]:
